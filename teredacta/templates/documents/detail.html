@@ -13,7 +13,7 @@
 
 <div style="margin: 1rem 0;">
     {% if doc.release_batch and doc.original_filename %}
-    <a href="/pdf/view?type=cache&path={{ doc.release_batch }}/{{ doc.original_filename }}" class="btn btn-primary">View PDF</a>
+    <a href="/pdf/view?type=cache&path={{ (doc.release_batch ~ '/' ~ doc.original_filename) | urlencode }}" class="btn btn-primary">View PDF</a>
     {% else %}
     <span class="btn" style="opacity:0.5;cursor:default;">PDF path unknown</span>
     {% endif %}

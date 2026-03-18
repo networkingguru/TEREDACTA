@@ -1,4 +1,5 @@
 <h3>Original PDFs{% if recovery.total_members > recovery.members|length %} <span style="color:var(--text-secondary);font-size:0.875rem;">(showing {{ recovery.members|length }} of {{ recovery.total_members }} group members)</span>{% endif %}</h3>
+{% if recovery.members|length > 1 %}
 <div class="comparison-controls">
     <select id="donor-select" class="filter-select" onchange="updateDonor(this.options[this.selectedIndex])">
         {% for m in recovery.members %}
@@ -7,12 +8,13 @@
     </select>
     <button class="btn btn-primary" onclick="toggleComparison(this)">Single View</button>
 </div>
+{% endif %}
 <div class="pdf-comparison">
     {% if recovery.members|length > 0 %}
     <div class="pdf-pane">
         <h4>{{ recovery.members[0].doc_id }}</h4>
         {% if recovery.members[0].pdf_cache_path %}
-        <iframe src="/pdf/embed?type=cache&path={{ recovery.members[0].pdf_cache_path }}" style="width:100%;height:600px;border:none;background:#525659;"></iframe>
+        <iframe src="/pdf/embed?type=cache&path={{ recovery.members[0].pdf_cache_path | urlencode }}" style="width:100%;height:600px;border:none;background:#525659;"></iframe>
         {% else %}
         <p style="color:var(--text-secondary);padding:1rem;">PDF not yet downloaded to local cache. Run <code>unobfuscator fetch</code> to populate.</p>
         {% endif %}
@@ -22,19 +24,19 @@
     <div class="pdf-pane" id="donor-pane">
         <h4 id="donor-title">{{ recovery.members[1].doc_id }}</h4>
         {% if recovery.members[1].pdf_cache_path %}
-        <iframe id="donor-iframe" src="/pdf/embed?type=cache&path={{ recovery.members[1].pdf_cache_path }}" style="width:100%;height:600px;border:none;background:#525659;"></iframe>
+        <iframe id="donor-iframe" src="/pdf/embed?type=cache&path={{ recovery.members[1].pdf_cache_path | urlencode }}" style="width:100%;height:600px;border:none;background:#525659;"></iframe>
         {% else %}
-        <p id="donor-iframe" style="color:var(--text-secondary);padding:1rem;">PDF not yet downloaded to local cache. Run <code>unobfuscator fetch</code> to populate.</p>
+        <p style="color:var(--text-secondary);padding:1rem;">PDF not yet downloaded to local cache. Run <code>unobfuscator fetch</code> to populate.</p>
         {% endif %}
     </div>
     {% endif %}
 </div>
+{% if recovery.members|length > 1 %}
 <script>
 function updateDonor(option) {
     const docId = option.value;
     const pdfPath = option.dataset.pdfPath;
     const pane = document.getElementById('donor-pane');
-    // Clear pane safely using DOM APIs
     pane.textContent = '';
     const title = document.createElement('h4');
     title.id = 'donor-title';
@@ -56,3 +58,4 @@ function updateDonor(option) {
 }
 </script>
 <script src="/static/js/comparison.js"></script>
+{% endif %}
