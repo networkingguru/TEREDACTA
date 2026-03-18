@@ -1,0 +1,19 @@
+<table class="data-table">
+    <thead><tr><th>Group</th><th>Recovered</th><th>Total Redacted</th><th>Soft</th><th>Output</th><th>Date</th></tr></thead>
+    <tbody>
+    {% for r in recoveries %}
+    <tr onclick="window.location='/recoveries/{{ r.group_id }}'">
+        <td>#{{ r.group_id }}</td>
+        <td style="color:var(--accent-green);font-weight:700;">{{ r.recovered_count }}</td>
+        <td>{{ r.total_redacted }}</td>
+        <td>{{ r.soft_recovered_count or 0 }}</td>
+        <td>{{ 'Yes' if r.output_generated else 'No' }}</td>
+        <td>{{ r.created_at or '—' }}</td>
+    </tr>
+    {% endfor %}
+    {% if not recoveries %}<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);">No recoveries found.</td></tr>{% endif %}
+    </tbody>
+</table>
+
+{% from "macros/pagination.html" import paginate %}
+{{ paginate("/recoveries/", page, per_page, total_pages, "&search=" ~ search) }}

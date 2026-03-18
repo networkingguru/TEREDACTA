@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Downloads — TEREDACTA{% endblock %}
+{% block content %}
+<h1>Dataset Downloads</h1>
+{% if disk %}
+<div style="margin-bottom:1.5rem;">
+    <div style="display:flex;justify-content:space-between;font-size:0.875rem;margin-bottom:0.25rem;">
+        <span>Disk Usage</span>
+        <span>{{ disk.used_gb }} GB / {{ disk.total_gb }} GB ({{ disk.percent_used }}%)</span>
+    </div>
+    <div class="progress-bar">
+        <div class="progress-fill" style="width:{{ disk.percent_used }}%;background:{% if disk.percent_used > 90 %}var(--accent-red){% elif disk.percent_used > 70 %}var(--accent-orange){% else %}var(--accent-blue){% endif %};"></div>
+    </div>
+    <p style="color:var(--text-secondary);font-size:0.8rem;margin-top:0.25rem;">{{ disk.free_gb }} GB free</p>
+</div>
+{% endif %}
+<div class="admin-form" style="max-width:400px;">
+    <h3>Trigger Download</h3>
+    <form hx-post="/admin/downloads/start" hx-target="#download-result">
+        <div class="form-group"><label>Batch ID</label><input name="batch_id" class="form-control" required></div>
+        <button type="submit" class="btn btn-success">Start Download</button>
+    </form>
+    <div id="download-result" style="margin-top:1rem;"></div>
+</div>
+{% endblock %}

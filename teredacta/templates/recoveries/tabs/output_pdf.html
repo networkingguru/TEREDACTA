@@ -1,0 +1,9 @@
+<h3>Output PDF</h3>
+{% if recovery.output_pdf_path %}
+<iframe src="/pdf/embed?type=output&path={{ recovery.output_pdf_path }}" style="width:100%;height:600px;border:none;border-radius:8px;background:#525659;"></iframe>
+<a href="/pdf/output/{{ recovery.output_pdf_path }}" class="btn btn-primary" style="margin-top:1rem;" download>Download PDF</a>
+{% elif recovery.output_generated %}
+<p style="color:var(--text-secondary);">Output PDF file not found on disk.</p>
+{% else %}
+<p style="color:var(--text-secondary);">Output PDF has not been generated yet.</p>
+{% endif %}

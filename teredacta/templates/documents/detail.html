@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.id }} — TEREDACTA{% endblock %}
+{% block nav_documents %}active{% endblock %}
+{% block content %}
+<h1>{{ doc.id }}</h1>
+<p style="color: var(--text-secondary); margin-bottom: 1rem;">{{ doc.original_filename or 'Unknown filename' }} · {{ doc.source }} · {{ doc.release_batch or 'No batch' }}</p>
+
+{% if doc.get('group_id') %}
+<p><a href="/groups/{{ doc.group_id }}" style="color: var(--accent-blue);">View Match Group #{{ doc.group_id }}</a> (similarity: {{ "%.2f"|format(doc.similarity) }})</p>
+{% else %}
+<p style="color:var(--text-secondary);">Not in any match group.</p>
+{% endif %}
+
+<div style="margin: 1rem 0;">
+    {% if doc.release_batch and doc.original_filename %}
+    <a href="/pdf/view?type=cache&path={{ doc.release_batch }}/{{ doc.original_filename }}" class="btn btn-primary">View PDF</a>
+    {% else %}
+    <span class="btn" style="opacity:0.5;cursor:default;">PDF path unknown</span>
+    {% endif %}
+</div>
+
+{% if doc.description %}
+<h3>Description</h3>
+<p style="margin-bottom: 1rem;">{{ doc.description }}</p>
+{% endif %}
+
+<h3>Extracted Text</h3>
+<div class="log-viewer" style="margin-top: 0.5rem;">{{ doc.extracted_text or 'No text extracted.' }}</div>
+
+<h3 style="margin-top: 1.5rem;">Metadata</h3>
+<table class="data-table" style="max-width: 600px;">
+    <tr><td>Pages</td><td>{{ doc.page_count or '—' }}</td></tr>
+    <tr><td>Text Processed</td><td>{{ 'Yes' if doc.text_processed else 'No' }}</td></tr>
+    <tr><td>PDF Processed</td><td>{{ 'Yes' if doc.pdf_processed else 'No' }}</td></tr>
+    <tr><td>Indexed</td><td>{{ doc.indexed_at or '—' }}</td></tr>
+</table>
+{% endblock %}

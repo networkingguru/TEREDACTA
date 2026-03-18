@@ -1,0 +1,34 @@
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Filename</th>
+            <th>Source</th>
+            <th>Batch</th>
+            <th>Pages</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for doc in docs %}
+        <tr onclick="window.location='/documents/{{ doc.id }}'">
+            <td>{{ doc.id }}</td>
+            <td>{{ doc.original_filename or '—' }}</td>
+            <td>{{ doc.source }}</td>
+            <td>{{ doc.release_batch or '—' }}</td>
+            <td>{{ doc.page_count or '—' }}</td>
+            <td>
+                {% if doc.pdf_processed %}PDF
+                {% elif doc.text_processed %}Text
+                {% else %}Pending{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+        {% if not docs %}
+        <tr><td colspan="6" style="text-align: center; color: var(--text-secondary);">No documents found.</td></tr>
+        {% endif %}
+    </tbody>
+</table>
+
+{% from "macros/pagination.html" import paginate %}
+{{ paginate("/documents/", page, per_page, total_pages, "&search=" ~ search ~ "&source=" ~ source ~ "&stage=" ~ stage) }}

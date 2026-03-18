@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Config — TEREDACTA{% endblock %}
+{% block content %}
+<h1>Configuration</h1>
+<div class="admin-form" style="max-width:600px;">
+    <h3>Current Settings</h3>
+    <table class="data-table" style="margin-bottom:1.5rem;">
+        <tr><td>Unobfuscator Path</td><td>{{ config.unobfuscator_path }}</td></tr>
+        <tr><td>Database</td><td>{{ config.db_path }}</td></tr>
+        <tr><td>PDF Cache</td><td>{{ config.pdf_cache_dir }}</td></tr>
+        <tr><td>Output</td><td>{{ config.output_dir }}</td></tr>
+        <tr><td>Host</td><td>{{ config.host }}</td></tr>
+        <tr><td>Port</td><td>{{ config.port }}</td></tr>
+        <tr><td>Mode</td><td>{{ 'Local' if config.is_local_mode else 'Server' }}</td></tr>
+    </table>
+    <h3>Edit Unobfuscator Settings</h3>
+    <form hx-post="/admin/config" hx-target="#config-result">
+        <div class="form-group"><label>Workers</label><input name="workers" class="form-control" placeholder="4"></div>
+        <div class="form-group"><label>Similarity Threshold</label><input name="similarity_threshold" class="form-control" placeholder="0.5"></div>
+        <div class="form-group"><label>Poll Interval (seconds)</label><input name="poll_interval" class="form-control" placeholder="30"></div>
+        <button type="submit" class="btn btn-primary">Save</button>
+    </form>
+    <div id="config-result" style="margin-top:1rem;"></div>
+</div>
+{% endblock %}

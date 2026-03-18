@@ -1,0 +1,9 @@
+<div class="common-unredactions" id="common-unredactions">
+    <h3>Most Common Unredactions <span title="Number of times this exact text was recovered across all documents" style="font-size:0.75rem;color:var(--text-secondary);font-weight:normal;">(segment occurrences)</span></h3>
+    {% for item in common %}
+    <div class="unredaction-item">
+        <a href="/recoveries?search={{ item.text|urlencode }}">{{ item.text }}</a>
+        <span class="unredaction-count" title="{{ item.count }} recovered segment(s) contain this text">{{ item.count }}×</span>
+    </div>
+    {% endfor %}
+</div>

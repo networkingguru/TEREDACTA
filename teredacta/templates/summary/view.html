@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Summary — TEREDACTA{% endblock %}
+{% block nav_summary %}active{% endblock %}
+{% block content %}
+<h1>Summary Report</h1>
+{% if has_summary %}
+<iframe src="/pdf/embed?type=summary&path=summary_report.pdf" style="width:100%;height:calc(100vh - 150px);border:none;border-radius:8px;background:#525659;"></iframe>
+<a href="/pdf/summary/summary_report.pdf" class="btn btn-primary" style="margin-top:1rem;" download>Download Summary</a>
+{% else %}
+<p style="color:var(--text-secondary);">No summary report has been generated yet. Run the Unobfuscator summary command to generate one.</p>
+{% endif %}
+{% endblock %}

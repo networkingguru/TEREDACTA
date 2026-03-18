@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Recoveries — TEREDACTA{% endblock %}
+{% block nav_recoveries %}active{% endblock %}
+{% block content %}
+<h1>Recoveries <span style="color: var(--text-secondary); font-size: 1rem;">({{ total }})</span></h1>
+
+<div id="common-unredactions" hx-get="/recoveries/common" hx-trigger="load" hx-swap="outerHTML">
+    <p style="color:var(--text-secondary);font-size:0.875rem;">Loading common unredactions…</p>
+</div>
+
+<div class="search-bar">
+    <input type="text" class="search-input" name="search" value="{{ search }}"
+           placeholder="Search recovered text..."
+           hx-get="/recoveries/" hx-target="#recovery-table" hx-trigger="keyup changed delay:300ms" hx-include="this">
+</div>
+
+<div id="recovery-table">
+{% include "recoveries/table.html" %}
+</div>
+{% endblock %}

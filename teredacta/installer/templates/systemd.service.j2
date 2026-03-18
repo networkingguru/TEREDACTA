@@ -1,0 +1,13 @@
+[Unit]
+Description=TEREDACTA Web Interface
+After=network.target
+
+[Service]
+Type=simple
+User={{ user }}
+ExecStart=teredacta run --config {{ db_path | replace('/unobfuscator.db', '') }}/../.teredacta/config.yaml
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

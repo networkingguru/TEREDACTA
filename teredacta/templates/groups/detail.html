@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Group #{{ group.group_id }} — TEREDACTA{% endblock %}
+{% block nav_groups %}active{% endblock %}
+{% block content %}
+<h1>Match Group #{{ group.group_id }}</h1>
+<p style="color:var(--text-secondary);margin-bottom:1rem;">{{ group.total_members }} members · {{ 'Merged' if group.merged else 'Not merged' }}</p>
+
+{% if group.merge_result and group.merge_result.recovered_count > 0 %}
+<p><a href="/recoveries/{{ group.group_id }}" class="btn btn-primary">View Recovery</a></p>
+{% endif %}
+
+<h2 style="margin-top:1.5rem;">Members{% if group.total_members > group.members|length %} <span style="color:var(--text-secondary);font-size:0.875rem;">(showing {{ group.members|length }} of {{ group.total_members }})</span>{% endif %}</h2>
+<table class="data-table">
+    <thead><tr><th>Document ID</th><th>Filename</th><th>Source</th><th>Batch</th><th>Similarity</th></tr></thead>
+    <tbody>
+    {% for m in group.members %}
+    <tr onclick="window.location='/documents/{{ m.doc_id }}'">
+        <td>{{ m.doc_id }}</td>
+        <td>{{ m.original_filename or '—' }}</td>
+        <td>{{ m.source }}</td>
+        <td>{{ m.release_batch or '—' }}</td>
+        <td>{{ "%.3f"|format(m.similarity) if m.similarity else '—' }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+{% if group.merge_result %}
+<h2 style="margin-top:1.5rem;">Merge Result</h2>
+<table class="data-table" style="max-width:400px;">
+    <tr><td>Recovered</td><td>{{ group.merge_result.recovered_count }}</td></tr>
+    <tr><td>Total Redacted</td><td>{{ group.merge_result.total_redacted }}</td></tr>
+    <tr><td>Output Generated</td><td>{{ 'Yes' if group.merge_result.output_generated else 'No' }}</td></tr>
+</table>
+{% endif %}
+{% endblock %}

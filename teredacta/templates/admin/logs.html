@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Logs — TEREDACTA{% endblock %}
+{% block content %}
+<h1>Log Viewer</h1>
+<div class="search-bar">
+    <select class="filter-select" hx-get="/admin/logs/tail" hx-target="#log-output" hx-include="[name='n']"
+            name="level">
+        <option value="">All Levels</option>
+        <option value="INFO">Info</option>
+        <option value="WARNING">Warning</option>
+        <option value="ERROR">Error</option>
+    </select>
+    <input type="number" name="n" value="100" class="search-input" style="max-width:100px;" placeholder="Lines">
+    <button class="btn btn-primary" hx-get="/admin/logs/tail" hx-target="#log-output" hx-include="[name='level'],[name='n']">Refresh</button>
+</div>
+<div id="log-output" class="log-viewer">{% for line in lines %}{{ line }}
+{% endfor %}</div>
+{% endblock %}

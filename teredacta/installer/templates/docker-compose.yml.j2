@@ -1,0 +1,11 @@
+version: "3.8"
+services:
+  teredacta:
+    build: .
+    ports:
+      - "${TEREDACTA_PORT:-{{ port }}}:{{ port }}"
+    volumes:
+      - {{ data_dir }}:/data
+    environment:
+      - TEREDACTA_CONFIG=/data/config.yaml
+    restart: unless-stopped

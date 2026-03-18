@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Match Groups — TEREDACTA{% endblock %}
+{% block nav_groups %}active{% endblock %}
+{% block content %}
+<h1>Match Groups <span style="color: var(--text-secondary); font-size: 1rem;">({{ total }})</span></h1>
+<table class="data-table">
+    <thead><tr><th>Group ID</th><th>Members</th><th>Avg Similarity</th><th>Merged</th><th>Created</th></tr></thead>
+    <tbody>
+    {% for g in groups %}
+    <tr onclick="window.location='/groups/{{ g.group_id }}'">
+        <td>#{{ g.group_id }}</td>
+        <td>{{ g.member_count }}</td>
+        <td>{{ "%.3f"|format(g.avg_similarity) if g.avg_similarity else '—' }}</td>
+        <td>{{ 'Yes' if g.merged else 'No' }}</td>
+        <td>{{ g.created_at or '—' }}</td>
+    </tr>
+    {% endfor %}
+    {% if not groups %}<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);">No match groups found.</td></tr>{% endif %}
+    </tbody>
+</table>
+
+{% from "macros/pagination.html" import paginate %}
+{{ paginate("/groups/", page, per_page, total_pages) }}
+{% endblock %}

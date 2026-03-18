@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}TEREDACTA{% endblock %}</title>
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <link rel="stylesheet" href="/static/css/app.css">
+    <script src="/static/js/htmx.min.js"></script>
+</head>
+<body hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
+    <nav class="top-nav">
+        <div class="nav-left">
+            <a href="/" class="nav-logo"><img src="/static/img/logo.png" alt="TEREDACTA" class="nav-logo-img"></a>
+            <a href="/" class="nav-link {% block nav_dashboard %}{% endblock %}">Dashboard</a>
+            <a href="/documents" class="nav-link {% block nav_documents %}{% endblock %}">Documents</a>
+            <a href="/groups" class="nav-link {% block nav_groups %}{% endblock %}">Groups</a>
+            <a href="/recoveries" class="nav-link {% block nav_recoveries %}{% endblock %}">Recoveries</a>
+            <a href="/queue" class="nav-link {% block nav_queue %}{% endblock %}">Queue</a>
+            <a href="/summary" class="nav-link {% block nav_summary %}{% endblock %}">Summary</a>
+        </div>
+        <div class="nav-right">
+            <span id="daemon-status" hx-get="/sse/daemon-status" hx-trigger="load, every 5s" hx-swap="innerHTML">
+                <span class="status-dot stopped"></span> CHECKING...
+            </span>
+        </div>
+    </nav>
+    <main class="content">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

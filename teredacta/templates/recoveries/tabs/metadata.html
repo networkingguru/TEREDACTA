@@ -1,0 +1,23 @@
+<h3>Metadata</h3>
+<table class="data-table" style="max-width:600px;">
+    <tr><td>Group ID</td><td>{{ group_id }}</td></tr>
+    <tr><td>Recovered</td><td>{{ recovery.recovered_count }}</td></tr>
+    <tr><td>Total Redacted</td><td>{{ recovery.total_redacted }}</td></tr>
+    <tr><td>Soft Recovered</td><td>{{ recovery.soft_recovered_count or 0 }}</td></tr>
+    <tr><td>Output Generated</td><td>{{ 'Yes' if recovery.output_generated else 'No' }}</td></tr>
+    <tr><td>Created</td><td>{{ recovery.created_at or '—' }}</td></tr>
+</table>
+
+<h4 style="margin-top:1rem;">Source Documents{% if recovery.total_members > recovery.members|length %} <span style="color:var(--text-secondary);font-size:0.875rem;">(showing {{ recovery.members|length }} of {{ recovery.total_members }})</span>{% endif %}</h4>
+<table class="data-table" style="max-width:600px;">
+    <thead><tr><th>Doc ID</th><th>Filename</th><th>Similarity</th></tr></thead>
+    <tbody>
+    {% for m in recovery.members %}
+    <tr onclick="window.location='/documents/{{ m.doc_id }}'">
+        <td>{{ m.doc_id }}</td>
+        <td>{{ m.original_filename or '—' }}</td>
+        <td>{{ "%.3f"|format(m.similarity) if m.similarity else '—' }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — TEREDACTA{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+
+{% if is_admin %}
+<div style="margin-bottom: 1rem;">
+    <button class="btn btn-success" hx-post="/admin/daemon/start" hx-target="#daemon-result" hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>Start</button>
+    <button class="btn btn-danger" hx-post="/admin/daemon/stop" hx-target="#daemon-result" hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>Stop</button>
+    <button class="btn btn-warning" hx-post="/admin/daemon/restart" hx-target="#daemon-result" hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>Restart</button>
+    <span id="daemon-result"></span>
+</div>
+{% endif %}
+
+<div id="stats-container" hx-get="/stats-fragment" hx-trigger="load, every 30s" hx-swap="innerHTML">
+    <p style="color: var(--text-secondary);">Loading stats...</p>
+</div>
+{% endblock %}

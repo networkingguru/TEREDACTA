@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Admin — TEREDACTA{% endblock %}
+{% block content %}
+<h1>Admin Dashboard</h1>
+<div class="stats-grid" style="max-width:800px;">
+    <div class="stat-card">
+        <div style="margin-bottom:0.5rem;">
+            <button class="btn btn-success" hx-post="/admin/daemon/start" hx-target="#daemon-msg">Start</button>
+            <button class="btn btn-danger" hx-post="/admin/daemon/stop" hx-target="#daemon-msg">Stop</button>
+            <button class="btn btn-warning" hx-post="/admin/daemon/restart" hx-target="#daemon-msg">Restart</button>
+        </div>
+        <div id="daemon-msg" style="font-size:0.8rem;color:var(--text-secondary);"></div>
+        <div class="stat-label">Daemon Control</div>
+    </div>
+</div>
+<h2 style="margin-top:1.5rem;">Admin Pages</h2>
+<div style="display:flex;gap:1rem;flex-wrap:wrap;">
+    <a href="/admin/search" class="btn btn-primary">Search</a>
+    <a href="/admin/config" class="btn btn-primary">Configuration</a>
+    <a href="/admin/logs" class="btn btn-primary">Logs</a>
+    <a href="/admin/downloads" class="btn btn-primary">Downloads</a>
+    <form action="/admin/logout" method="post" style="display:inline;">
+        <button type="submit" class="btn btn-danger">Logout</button>
+    </form>
+</div>
+{% endblock %}

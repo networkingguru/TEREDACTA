@@ -1,0 +1,36 @@
+<h3>Merged Text</h3>
+{% if recovery.merged_text_html %}
+<div class="log-viewer" style="line-height:1.8;">
+{{ recovery.merged_text_html | safe }}
+</div>
+{% else %}
+<p style="color:var(--text-secondary);padding:0.75rem 0;">
+    No merged text available for this recovery.
+    The source documents may be image-only PDFs with no extractable text.
+    Check the <strong>Metadata</strong> tab for source document details, or the <strong>Original PDFs</strong> tab to view the scanned pages.
+</p>
+{% endif %}
+
+{% if recovery.recovered_segments %}
+{% set real_segments = recovery.recovered_segments | selectattr('text') | list %}
+{% if real_segments %}
+<h4 style="margin-top:1rem;">Recovered Passages</h4>
+{% set ns = namespace(showed_any=false) %}
+{% for seg in real_segments %}
+{% set seg_text = seg.text | string %}
+{% if seg_text | length > 0 and not seg_text.startswith('The image') and not seg_text.startswith('This image') and not seg_text.startswith('This page') %}
+{% set ns.showed_any = true %}
+<div style="padding:0.5rem;border-bottom:1px solid var(--border);">
+    <span class="recovered">{{ seg.text_html | safe if seg.text_html else seg_text }}</span>
+    <span style="color:var(--text-secondary);font-size:0.8rem;margin-left:0.5rem;">from {{ seg.source_doc_id }}</span>
+</div>
+{% endif %}
+{% endfor %}
+{% if not ns.showed_any %}
+<p style="color:var(--text-secondary);font-size:0.875rem;">
+    {{ real_segments | length }} recovered segment(s) contain only image descriptions (no plain text).
+    Use the <strong>Original PDFs</strong> tab to view the source documents.
+</p>
+{% endif %}
+{% endif %}
+{% endif %}

@@ -1,0 +1,46 @@
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.get('total_documents', 0) }}</div>
+        <div class="stat-label">Documents</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.get('groups', 0) }}</div>
+        <div class="stat-label">Match Groups</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.get('recovered', 0) }}</div>
+        <div class="stat-label">Redactions Recovered</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.get('soft_recovered', 0) }}</div>
+        <div class="stat-label">Soft Redactions</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.get('pdfs_processed', 0) }}</div>
+        <div class="stat-label">PDFs Processed</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.get('failed_jobs', 0) }}</div>
+        <div class="stat-label">Failed Jobs</div>
+    </div>
+</div>
+
+<h2>Pipeline Progress</h2>
+{% set total = stats.get('total_documents', 0) %}
+{% if total > 0 %}
+{% for label, key in [('Indexed', 'indexed'), ('Fingerprinted', 'fingerprinted'), ('Matched', 'matched'), ('Merged', 'merged'), ('PDFs Processed', 'pdfs_processed'), ('Outputs Generated', 'outputs_generated')] %}
+{% set value = stats.get(key, 0) %}
+{% set pct = (value / total * 100) | round(1) %}
+<div style="margin-bottom: 0.75rem;">
+    <div style="display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.25rem;">
+        <span>{{ label }}</span>
+        <span>{{ value }} / {{ total }} ({{ pct }}%)</span>
+    </div>
+    <div class="progress-bar">
+        <div class="progress-fill" style="width: {{ pct }}%; background: var(--accent-blue);"></div>
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<p style="color: var(--text-secondary);">No documents indexed yet.</p>
+{% endif %}

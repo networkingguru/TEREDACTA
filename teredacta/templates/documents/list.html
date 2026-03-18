@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Documents — TEREDACTA{% endblock %}
+{% block nav_documents %}active{% endblock %}
+{% block content %}
+<h1>Documents <span style="color: var(--text-secondary); font-size: 1rem;">({{ total }})</span></h1>
+
+<div class="search-bar">
+    <input type="text" class="search-input" name="search" value="{{ search }}"
+           placeholder="Search by ID, filename, or description..."
+           hx-get="/documents/" hx-target="#doc-table" hx-trigger="keyup changed delay:300ms"
+           hx-include="[name='source'],[name='stage']">
+    <select name="source" class="filter-select" hx-get="/documents/" hx-target="#doc-table" hx-trigger="change"
+            hx-include="[name='search'],[name='stage']">
+        <option value="">All Sources</option>
+        <option value="doj" {% if source == 'doj' %}selected{% endif %}>DOJ</option>
+        <option value="house" {% if source == 'house' %}selected{% endif %}>House Oversight</option>
+    </select>
+    <select name="stage" class="filter-select" hx-get="/documents/" hx-target="#doc-table" hx-trigger="change"
+            hx-include="[name='search'],[name='source']">
+        <option value="">All Stages</option>
+        <option value="text_processed" {% if stage == 'text_processed' %}selected{% endif %}>Text Processed</option>
+        <option value="pdf_processed" {% if stage == 'pdf_processed' %}selected{% endif %}>PDF Processed</option>
+        <option value="unprocessed" {% if stage == 'unprocessed' %}selected{% endif %}>Unprocessed</option>
+    </select>
+</div>
+
+{% if docs|length < 3 and search %}
+<p style="color: var(--text-secondary); margin-bottom: 1rem;">Few results? <a href="/recoveries?search={{ search }}" style="color: var(--accent-blue);">Search in recoveries instead</a></p>
+{% endif %}
+
+<div id="doc-table">
+    {% include "documents/table.html" %}
+</div>
+{% endblock %}
