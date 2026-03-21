@@ -7,7 +7,7 @@ from teredacta.unob import calc_total_pages
 router = APIRouter()
 
 @router.get("/", response_class=HTMLResponse)
-async def list_groups(
+def list_groups(
     request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=100),
@@ -28,7 +28,7 @@ async def list_groups(
     })
 
 @router.get("/{group_id:int}", response_class=HTMLResponse)
-async def group_detail(request: Request, group_id: int):
+def group_detail(request: Request, group_id: int):
     templates = request.app.state.templates
     unob = request.app.state.unob
     detail = unob.get_match_group_detail(group_id)

@@ -7,7 +7,7 @@
     <thead><tr><th>Group ID</th><th>Members</th><th>Avg Similarity</th><th>Merged</th><th>Created</th></tr></thead>
     <tbody>
     {% for g in groups %}
-    <tr onclick="window.location='/groups/{{ g.group_id }}'">
+    <tr onclick="window.location='/groups/{{ g.group_id | tojson }}'">
         <td>#{{ g.group_id }}</td>
         <td>{{ g.member_count }}</td>
         <td>{{ "%.3f"|format(g.avg_similarity) if g.avg_similarity else '—' }}</td>

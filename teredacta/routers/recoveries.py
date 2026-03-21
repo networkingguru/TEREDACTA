@@ -7,11 +7,11 @@ from teredacta.unob import calc_total_pages
 router = APIRouter()
 
 @router.get("/", response_class=HTMLResponse)
-async def list_recoveries(
+def list_recoveries(
     request: Request,
     search: str = Query(None),
     page: int = Query(1, ge=1),
-    per_page: int = Query(50, ge=1),
+    per_page: int = Query(50, ge=1, le=100),
 ):
     templates = request.app.state.templates
     unob = request.app.state.unob
@@ -35,7 +35,7 @@ async def list_recoveries(
     return templates.TemplateResponse("recoveries/list.html", ctx)
 
 @router.get("/common", response_class=HTMLResponse)
-async def common_unredactions(request: Request):
+def common_unredactions(request: Request):
     """Lazy-loaded endpoint for the common unredactions panel."""
     templates = request.app.state.templates
     unob = request.app.state.unob
@@ -50,7 +50,7 @@ async def common_unredactions(request: Request):
     })
 
 @router.get("/{group_id:int}", response_class=HTMLResponse)
-async def recovery_detail(request: Request, group_id: int):
+def recovery_detail(request: Request, group_id: int):
     templates = request.app.state.templates
     unob = request.app.state.unob
     detail = unob.get_recovery_detail(group_id)
@@ -63,7 +63,7 @@ async def recovery_detail(request: Request, group_id: int):
     })
 
 @router.get("/{group_id:int}/tab/{tab_name}", response_class=HTMLResponse)
-async def recovery_tab(request: Request, group_id: int, tab_name: str):
+def recovery_tab(request: Request, group_id: int, tab_name: str):
     templates = request.app.state.templates
     unob = request.app.state.unob
     detail = unob.get_recovery_detail(group_id)

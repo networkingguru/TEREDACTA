@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import os
 import time
 from functools import wraps
@@ -22,6 +23,7 @@ class AuthManager:
         response.set_cookie(
             "session", cookie_value, httponly=True, samesite="strict",
             max_age=self.config.session_timeout_minutes * 60,
+            secure=not self.config.is_local_mode,
         )
         return csrf_token
 
@@ -36,7 +38,10 @@ class AuthManager:
 
     def validate_csrf(self, request: Request, session: dict) -> bool:
         token = request.headers.get("X-CSRF-Token", "")
-        return token == session.get("csrf", "")
+        session_csrf = session.get("csrf", "")
+        if not token or not session_csrf:
+            return False
+        return hmac.compare_digest(token, session_csrf)
 
     def is_admin(self, request: Request) -> bool:
         if not self.config.admin_enabled:

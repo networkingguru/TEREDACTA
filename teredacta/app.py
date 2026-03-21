@@ -1,8 +1,11 @@
 from pathlib import Path
+import logging
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.responses import HTMLResponse
+
+logger = logging.getLogger(__name__)
 from teredacta.auth import AuthManager
 from teredacta.config import TeredactaConfig
 from teredacta.unob import UnobInterface
@@ -45,9 +48,10 @@ def create_app(config: TeredactaConfig) -> FastAPI:
 
     @app.exception_handler(FileNotFoundError)
     async def db_not_found_handler(request: Request, exc: FileNotFoundError):
+        logger.error("FileNotFoundError: %s", exc)
         return templates.TemplateResponse(
             "error.html",
-            {"request": request, "error": str(exc), "is_admin": False, "csrf_token": ""},
+            {"request": request, "error": "Database not found. Check your configuration.", "is_admin": False, "csrf_token": ""},
             status_code=503,
         )
 

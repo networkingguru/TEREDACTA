@@ -14,5 +14,5 @@ session_timeout_minutes: {{ session_timeout_minutes }}
 sse_poll_interval_seconds: {{ sse_poll_interval_seconds }}
 subprocess_timeout_seconds: {{ subprocess_timeout_seconds }}
 {% if admin_password_hash %}
-admin_password_hash: {{ admin_password_hash }}
+admin_password_hash: "{{ admin_password_hash }}"
 {% endif %}

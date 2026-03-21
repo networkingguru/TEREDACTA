@@ -1,6 +1,7 @@
 import os
 import signal
 import sys
+from pathlib import Path
 import click
 
 _DEFAULT_PID_FILE = "/tmp/teredacta.pid"
@@ -69,6 +70,11 @@ def start(host, port, config_path, pid_file, log_file):
         except ProcessLookupError:
             os.remove(pid_file)
 
+    if sys.platform == "win32":
+        click.echo("Error: Daemon mode is not supported on Windows.")
+        click.echo("Use 'teredacta run' to start in the foreground instead.")
+        sys.exit(1)
+
     cfg = _load_and_patch_cfg(config_path, host, port)
 
     pid = os.fork()
@@ -82,8 +88,13 @@ def start(host, port, config_path, pid_file, log_file):
         click.echo(f"  Stop: teredacta stop")
         return
 
-    # Child: detach from terminal.
+    # Child: close stdin and detach from terminal.
+    devnull = os.open(os.devnull, os.O_RDONLY)
+    os.dup2(devnull, sys.stdin.fileno())
+    os.close(devnull)
     os.setsid()
+    import atexit
+    atexit.register(lambda: os.path.exists(pid_file) and os.remove(pid_file))
     with open(log_file, "a") as log:
         os.dup2(log.fileno(), sys.stdout.fileno())
         os.dup2(log.fileno(), sys.stderr.fileno())
@@ -101,7 +112,7 @@ def stop(pid_file):
     if not os.path.exists(pid_file):
         click.echo("Not running (no PID file found).")
         sys.exit(1)
-    pid = int(open(pid_file).read().strip())
+    pid = int(Path(pid_file).read_text().strip())
     try:
         os.kill(pid, 0)  # Check if process exists first
     except ProcessLookupError:
@@ -110,7 +121,15 @@ def stop(pid_file):
         return
 
     # Send SIGTERM and wait for process to actually exit
-    os.kill(pid, signal.SIGTERM)
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        os.remove(pid_file)
+        click.echo("Process exited before signal could be sent; PID file removed.")
+        return
+    except PermissionError:
+        click.echo(f"Permission denied sending signal to PID {pid}. Is it owned by another user?")
+        sys.exit(1)
     import time
     for _ in range(30):  # Wait up to 3 seconds
         time.sleep(0.1)

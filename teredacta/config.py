@@ -1,10 +1,13 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+import logging
 import os
 
 import bcrypt
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -22,6 +25,9 @@ class TeredactaConfig:
     session_timeout_minutes: int = 60
     sse_poll_interval_seconds: int = 2
     subprocess_timeout_seconds: int = 60
+    # NOTE: Default generates a random key on every process start, which
+    # invalidates all existing sessions on restart. Persist a secret_key in
+    # your config file (teredacta.yaml) to preserve sessions across restarts.
     secret_key: str = field(default_factory=lambda: os.urandom(32).hex())
 
     @property
@@ -72,6 +78,14 @@ def load_config(config_path: Optional[str] = None) -> TeredactaConfig:
         k: v for k, v in data.items()
         if k in TeredactaConfig.__dataclass_fields__
     })
+
+    # Warn if a config file was loaded but no secret_key was persisted
+    if config_path and "secret_key" not in data:
+        logger.warning(
+            "No secret_key found in config file — sessions will not survive "
+            "restarts. Add a 'secret_key' entry to %s to fix this.",
+            config_path,
+        )
 
     # Env var override for password (plaintext -> bcrypt hash)
     env_password = os.environ.get("TEREDACTA_ADMIN_PASSWORD")

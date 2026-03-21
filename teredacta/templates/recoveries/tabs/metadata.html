@@ -13,7 +13,7 @@
     <thead><tr><th>Doc ID</th><th>Filename</th><th>Similarity</th></tr></thead>
     <tbody>
     {% for m in recovery.members %}
-    <tr onclick="window.location='/documents/{{ m.doc_id }}'">
+    <tr onclick='window.location="/documents/" + {{ m.doc_id | tojson }}'>
         <td>{{ m.doc_id }}</td>
         <td>{{ m.original_filename or '—' }}</td>
         <td>{{ "%.3f"|format(m.similarity) if m.similarity else '—' }}</td>

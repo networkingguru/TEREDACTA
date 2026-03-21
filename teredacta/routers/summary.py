@@ -4,7 +4,7 @@ from fastapi.responses import HTMLResponse
 router = APIRouter()
 
 @router.get("/", response_class=HTMLResponse)
-async def view_summary(request: Request):
+def view_summary(request: Request):
     templates = request.app.state.templates
     unob = request.app.state.unob
     summary_path = unob.get_pdf_path("summary", "summary_report.pdf")

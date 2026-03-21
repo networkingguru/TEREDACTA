@@ -19,8 +19,6 @@
     <a href="/admin/config" class="btn btn-primary">Configuration</a>
     <a href="/admin/logs" class="btn btn-primary">Logs</a>
     <a href="/admin/downloads" class="btn btn-primary">Downloads</a>
-    <form action="/admin/logout" method="post" style="display:inline;">
-        <button type="submit" class="btn btn-danger">Logout</button>
-    </form>
+    <button class="btn btn-danger" hx-post="/admin/logout">Logout</button>
 </div>
 {% endblock %}

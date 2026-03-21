@@ -3,7 +3,7 @@
 {% block content %}
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
     <h1>PDF Viewer</h1>
-    <a href="/pdf/{{ pdf_type }}/{{ pdf_path | urlencode }}" class="btn btn-primary" download>Download</a>
+    <a href="/pdf/{{ pdf_type }}/{{ pdf_path }}" class="btn btn-primary" download>Download</a>
 </div>
 <iframe src="/pdf/embed?type={{ pdf_type }}&path={{ pdf_path | urlencode }}" style="width:100%;height:calc(100vh - 150px);border:none;border-radius:8px;background:#525659;"></iframe>
 {% endblock %}

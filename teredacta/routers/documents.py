@@ -7,7 +7,7 @@ from teredacta.unob import calc_total_pages
 router = APIRouter()
 
 @router.get("/", response_class=HTMLResponse)
-async def list_documents(
+def list_documents(
     request: Request,
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=100),
@@ -43,7 +43,7 @@ async def list_documents(
     return templates.TemplateResponse("documents/list.html", ctx)
 
 @router.get("/{doc_id}", response_class=HTMLResponse)
-async def document_detail(request: Request, doc_id: str):
+def document_detail(request: Request, doc_id: str):
     templates = request.app.state.templates
     unob = request.app.state.unob
     doc = unob.get_document(doc_id)

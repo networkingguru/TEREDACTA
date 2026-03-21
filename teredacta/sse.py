@@ -1,8 +1,11 @@
 import asyncio
 import json
+import logging
 from functools import partial
 from typing import AsyncGenerator, Optional, Set
 from teredacta.unob import UnobInterface
+
+logger = logging.getLogger(__name__)
 
 
 class SSEManager:
@@ -14,7 +17,7 @@ class SSEManager:
         self._last_stats: Optional[dict] = None
 
     def subscribe(self) -> asyncio.Queue:
-        queue = asyncio.Queue()
+        queue = asyncio.Queue(maxsize=100)
         self._subscribers.add(queue)
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._poll_loop())
@@ -46,7 +49,7 @@ class SSEManager:
                             self._last_stats = data
                             event = f"data: {json.dumps(data)}\n\n"
                             dead_queues = []
-                            for q in self._subscribers:
+                            for q in list(self._subscribers):
                                 try:
                                     q.put_nowait(event)
                                 except asyncio.QueueFull:
@@ -54,7 +57,7 @@ class SSEManager:
                             for q in dead_queues:
                                 self._subscribers.discard(q)
                     except Exception:
-                        pass
+                        logger.exception("SSE poll error")
                 await asyncio.sleep(self.poll_interval)
         except asyncio.CancelledError:
             pass

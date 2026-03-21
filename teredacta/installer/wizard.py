@@ -67,6 +67,7 @@ def run_wizard():
         "sse_poll_interval_seconds": 2,
         "subprocess_timeout_seconds": 60,
     }
+    config["secret_key"] = os.urandom(32).hex()
     if admin_password_hash:
         config["admin_password_hash"] = admin_password_hash
 

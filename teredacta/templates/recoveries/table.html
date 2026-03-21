@@ -2,7 +2,7 @@
     <thead><tr><th>Group</th><th>Recovered</th><th>Total Redacted</th><th>Soft</th><th>Output</th><th>Date</th></tr></thead>
     <tbody>
     {% for r in recoveries %}
-    <tr onclick="window.location='/recoveries/{{ r.group_id }}'">
+    <tr onclick="window.location='/recoveries/{{ r.group_id | tojson }}'">
         <td>#{{ r.group_id }}</td>
         <td style="color:var(--accent-green);font-weight:700;">{{ r.recovered_count }}</td>
         <td>{{ r.total_redacted }}</td>
@@ -16,4 +16,4 @@
 </table>
 
 {% from "macros/pagination.html" import paginate %}
-{{ paginate("/recoveries/", page, per_page, total_pages, "&search=" ~ search) }}
+{{ paginate("/recoveries/", page, per_page, total_pages, "&search=" ~ (search | urlencode)) }}

@@ -11,7 +11,7 @@
     </thead>
     <tbody>
         {% for doc in docs %}
-        <tr onclick="window.location='/documents/{{ doc.id }}'">
+        <tr onclick='window.location="/documents/" + {{ doc.id | tojson }}'>
             <td>{{ doc.id }}</td>
             <td>{{ doc.original_filename or '—' }}</td>
             <td>{{ doc.source }}</td>
@@ -31,4 +31,4 @@
 </table>
 
 {% from "macros/pagination.html" import paginate %}
-{{ paginate("/documents/", page, per_page, total_pages, "&search=" ~ search ~ "&source=" ~ source ~ "&stage=" ~ stage) }}
+{{ paginate("/documents/", page, per_page, total_pages, "&search=" ~ (search | urlencode) ~ "&source=" ~ (source | urlencode) ~ "&stage=" ~ (stage | urlencode)) }}

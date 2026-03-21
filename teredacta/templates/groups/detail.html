@@ -14,7 +14,7 @@
     <thead><tr><th>Document ID</th><th>Filename</th><th>Source</th><th>Batch</th><th>Similarity</th></tr></thead>
     <tbody>
     {% for m in group.members %}
-    <tr onclick="window.location='/documents/{{ m.doc_id }}'">
+    <tr onclick='window.location="/documents/" + {{ m.doc_id | tojson }}'>
         <td>{{ m.doc_id }}</td>
         <td>{{ m.original_filename or '—' }}</td>
         <td>{{ m.source }}</td>

@@ -2,6 +2,7 @@ import html
 import json
 import os
 import platform
+import shlex
 import sqlite3
 import subprocess
 import re
@@ -17,6 +18,12 @@ _RE_CHANGE_U = re.compile(
 )
 _RE_CHANGE_BARE = re.compile(r"&lt;/?change&gt;")
 _RE_U_BARE = re.compile(r"&lt;/?u&gt;")
+_TABLE_RE = re.compile(
+    r"&lt;table&gt;"
+    r"((?:&lt;/?(?:tr|th|td)&gt;|[^&]|&(?!lt;/?table&gt;))*?)"
+    r"&lt;/table&gt;",
+    re.DOTALL,
+)
 
 
 def calc_total_pages(total: int, per_page: int) -> int:
@@ -51,7 +58,9 @@ class UnobInterface:
         """Trim fetch+1 rows and estimate total without COUNT."""
         has_more = len(rows) > per_page
         rows = rows[:per_page]
-        return rows, offset + len(rows) + (1 if has_more else 0)
+        if has_more:
+            return rows, offset + len(rows) + per_page
+        return rows, offset + len(rows)
 
     def _get_db(self) -> sqlite3.Connection:
         db_path = Path(self.config.db_path)
@@ -75,13 +84,15 @@ class UnobInterface:
         if not db_path.exists():
             return
         conn = sqlite3.connect(str(db_path), timeout=10.0)
-        conn.execute("PRAGMA busy_timeout = 10000")
-        for idx_name, table, column in self._INDEXES:
-            conn.execute(
-                f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table}({column})"
-            )
-        conn.commit()
-        conn.close()
+        try:
+            conn.execute("PRAGMA busy_timeout = 10000")
+            for idx_name, table, column in self._INDEXES:
+                conn.execute(
+                    f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table}({column})"
+                )
+            conn.commit()
+        finally:
+            conn.close()
 
     # --- Stats ---
 
@@ -149,15 +160,16 @@ class UnobInterface:
             cols = ("id, source, release_batch, original_filename, "
                     "page_count, description, text_processed, pdf_processed")
 
-            # Search uses GLOB (case-sensitive) for index-backed prefix
-            # matching on original_filename and id. UNION merges results
-            # across case variants (upper, lower, original).
+            # Search uses GLOB for substring matching on original_filename
+            # and id. UNION merges results across case variants.
             if search:
-                # Build deduplicated set of GLOB patterns
+                # Escape GLOB metacharacters before building patterns
+                safe_search = re.sub(r'([\[\]*?])', r'[\1]', search)
+                # Build deduplicated set of GLOB patterns (substring: *term*)
                 patterns = list(dict.fromkeys([
-                    search.upper() + "*",
-                    search.lower() + "*",
-                    search + "*",
+                    "*" + safe_search.upper() + "*",
+                    "*" + safe_search.lower() + "*",
+                    "*" + safe_search + "*",
                 ]))
                 # UNION across both columns with each unique pattern
                 parts = []
@@ -324,10 +336,16 @@ class UnobInterface:
             where = "mr.recovered_count > 0"
             params = []
             if search:
-                # Search within recovered_segments JSON so we only match text
-                # that was actually unredacted, not text already in the document
-                where += " AND mr.recovered_segments LIKE ?"
-                params.append(f"%{search}%")
+                # recovered_segments is a JSON column. The LIKE search operates on
+                # the raw JSON text, where characters like " are stored as \".
+                # Convert the search term to its JSON-encoded form (minus outer quotes)
+                # so that searching for: "jeffrey E." <foo@bar.com>
+                # becomes: \"jeffrey E.\" <foo@bar.com>  in the LIKE pattern.
+                # Use '!' as the ESCAPE character since '\' is used by JSON encoding.
+                json_escaped = json.dumps(search)[1:-1]  # strip outer quotes
+                escaped = json_escaped.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+                where += " AND mr.recovered_segments LIKE ? ESCAPE '!'"
+                params.append(f"%{escaped}%")
 
             total = conn.execute(
                 f"SELECT COUNT(*) FROM merge_results mr WHERE {where}",
@@ -457,22 +475,26 @@ class UnobInterface:
                 "WHERE value IS NOT NULL"
             ).fetchall()
 
-            # Count distinct documents (group_ids) per recovered phrase
+            # Count distinct documents (group_ids) per recovered phrase.
+            # We normalize whitespace for aggregation but keep one raw variant
+            # so the search link uses text that matches the raw JSON column.
             doc_sets: dict[str, set] = {}
+            raw_variants: dict[str, str] = {}
             for row in rows:
                 segment = json.loads(row["value"]) if isinstance(row["value"], str) else row["value"]
-                text = segment.get("text", "") if isinstance(segment, dict) else str(segment)
-                text = " ".join(text.split()).strip()
+                raw_text = segment.get("text", "") if isinstance(segment, dict) else str(segment)
+                text = " ".join(raw_text.split()).strip()
                 if not text:
                     continue
                 if len(text.split()) < min_words:
                     continue
                 if text not in doc_sets:
                     doc_sets[text] = set()
+                    raw_variants[text] = raw_text.strip()
                 doc_sets[text].add(row["group_id"])
 
             results = [
-                {"text": text, "count": len(group_ids)}
+                {"text": text, "search_text": raw_variants[text], "count": len(group_ids)}
                 for text, group_ids in doc_sets.items()
                 if len(group_ids) >= min_occurrences
             ]
@@ -513,7 +535,7 @@ class UnobInterface:
 
     def run_command(self, args: list[str]) -> dict:
         """Run an unobfuscator CLI command."""
-        cmd = self.config.unobfuscator_bin.split() + args
+        cmd = shlex.split(self.config.unobfuscator_bin) + args
         try:
             result = subprocess.run(
                 cmd,
@@ -586,7 +608,12 @@ class UnobInterface:
 
     def restart_daemon(self) -> dict:
         stop_result = self.stop_daemon()
-        if not stop_result.get("success", False) and "not running" not in stop_result.get("stdout", ""):
+        combined = (
+            stop_result.get("stdout", "")
+            + stop_result.get("stderr", "")
+            + stop_result.get("error", "")
+        )
+        if not stop_result.get("success", False) and "not running" not in combined.lower():
             return {
                 "success": False,
                 "error": f"Stop failed: {stop_result.get('error', stop_result.get('stderr', ''))}",
@@ -608,14 +635,41 @@ class UnobInterface:
     # --- Log Tailing ---
 
     def read_log_lines(self, n: int = 50, level: Optional[str] = None) -> list[str]:
-        """Read last n lines from the log file."""
+        """Read last n lines from the log file.
+
+        Uses a seek-from-end approach to avoid reading the entire file into
+        memory, which matters for large log files.
+        """
         log_path = Path(self.config.log_path)
         if not log_path.exists():
             return []
-        lines = log_path.read_text().splitlines()
+
+        # When filtering by level we may need many more raw lines to find n matches
+        raw_needed = n * 10 if level else n
+        chunk_size = 8192
+        lines: list[str] = []
+
+        max_total_bytes = 10 * 1024 * 1024  # 10 MB cap
+        total_read = 0
+
+        with open(log_path, "r") as f:
+            f.seek(0, 2)  # seek to end
+            remaining = f.tell()
+            buffer = ""
+            while remaining > 0 and len(lines) < raw_needed and total_read < max_total_bytes:
+                read_size = min(chunk_size, remaining, max_total_bytes - total_read)
+                remaining -= read_size
+                f.seek(remaining)
+                chunk = f.read(read_size)
+                total_read += read_size
+                buffer = chunk + buffer
+                lines = buffer.splitlines()
+            # If the entire file is smaller than what we need, lines already has everything
+
         if level:
             level_upper = level.upper()
-            lines = [l for l in lines if level_upper in l]
+            level_re = re.compile(r'\b' + re.escape(level_upper) + r'\b')
+            lines = [line for line in lines if level_re.search(line[:80])]
         return lines[-n:]
 
     def get_log_position(self) -> int:
@@ -625,8 +679,12 @@ class UnobInterface:
             return 0
         return log_path.stat().st_size
 
-    def read_log_from(self, position: int) -> tuple[list[str], int]:
-        """Read new log lines from a given byte position."""
+    def read_log_from(self, position: int, max_bytes: int = 1_048_576) -> tuple[list[str], int]:
+        """Read new log lines from a given byte position.
+
+        At most *max_bytes* (default 1 MB) are read per call to avoid
+        unbounded memory usage on very large log deltas.
+        """
         log_path = Path(self.config.log_path)
         if not log_path.exists():
             return [], 0
@@ -635,9 +693,10 @@ class UnobInterface:
             return [], current_size
         with open(log_path, "r") as f:
             f.seek(position)
-            new_content = f.read()
+            new_content = f.read(max_bytes)
+            actual_position = f.tell()
         new_lines = new_content.splitlines()
-        return new_lines, current_size
+        return new_lines, actual_position
 
     # --- Text Formatting ---
 
@@ -655,15 +714,21 @@ class UnobInterface:
         # <change> without <u> (partial markup)
         escaped = _RE_CHANGE_BARE.sub("", escaped)
         escaped = _RE_U_BARE.sub("", escaped)
-        # Render table markup
-        escaped = escaped.replace("&lt;table&gt;", '<table class="data-table" style="margin:0.5rem 0;">')
-        escaped = escaped.replace("&lt;/table&gt;", "</table>")
-        escaped = escaped.replace("&lt;tr&gt;", "<tr>")
-        escaped = escaped.replace("&lt;/tr&gt;", "</tr>")
-        escaped = escaped.replace("&lt;th&gt;", "<th>")
-        escaped = escaped.replace("&lt;/th&gt;", "</th>")
-        escaped = escaped.replace("&lt;td&gt;", "<td>")
-        escaped = escaped.replace("&lt;/td&gt;", "</td>")
+        # Restore table markup that was originally inserted by the Unobfuscator
+        # tool. We only restore tags that appear in a valid table structure
+        # (table containing tr/th/td rows) to avoid injecting HTML if
+        # document text happens to contain literal "<table>" strings.
+        def _restore_table(m: re.Match) -> str:
+            inner = m.group(1)
+            inner = inner.replace("&lt;tr&gt;", "<tr>")
+            inner = inner.replace("&lt;/tr&gt;", "</tr>")
+            inner = inner.replace("&lt;th&gt;", "<th>")
+            inner = inner.replace("&lt;/th&gt;", "</th>")
+            inner = inner.replace("&lt;td&gt;", "<td>")
+            inner = inner.replace("&lt;/td&gt;", "</td>")
+            return f'<table class="data-table" style="margin:0.5rem 0;">{inner}</table>'
+
+        escaped = _TABLE_RE.sub(_restore_table, escaped)
         return escaped
 
     # --- PDF File Access ---

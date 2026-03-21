@@ -13,7 +13,7 @@ class TestAdminAuth:
         test_config.admin_password_hash = pw_hash
         from teredacta.app import create_app
         app = create_app(test_config)
-        client = TestClient(app)
+        client = TestClient(app, base_url="https://testserver")
         resp = client.get("/admin/")
         assert resp.status_code == 200  # Shows login page
 
@@ -23,7 +23,7 @@ class TestAdminAuth:
         test_config.admin_password_hash = pw_hash
         from teredacta.app import create_app
         app = create_app(test_config)
-        client = TestClient(app)
+        client = TestClient(app, base_url="https://testserver")
         resp = client.post("/admin/login", data={"password": "secret"}, follow_redirects=False)
         assert resp.status_code == 303
         assert "session" in resp.cookies
@@ -34,7 +34,7 @@ class TestAdminAuth:
         test_config.admin_password_hash = pw_hash
         from teredacta.app import create_app
         app = create_app(test_config)
-        client = TestClient(app)
+        client = TestClient(app, base_url="https://testserver")
         resp = client.post("/admin/login", data={"password": "wrong"})
         assert resp.status_code == 401
 
@@ -45,9 +45,14 @@ class TestCSRF:
         test_config.admin_password_hash = pw_hash
         from teredacta.app import create_app
         app = create_app(test_config)
-        client = TestClient(app)
+        client = TestClient(app, base_url="https://testserver")
         resp = client.post("/admin/login", data={"password": "secret"}, follow_redirects=False)
         assert "session" in resp.cookies
-        # After login, admin endpoints should be accessible with session cookie
-        resp2 = client.post("/admin/daemon/start")
+        # Extract CSRF token from session cookie
+        from itsdangerous import URLSafeTimedSerializer
+        serializer = URLSafeTimedSerializer(test_config.secret_key)
+        session_data = serializer.loads(resp.cookies["session"])
+        csrf_token = session_data["csrf"]
+        # After login, admin endpoints should be accessible with session cookie + CSRF token
+        resp2 = client.post("/admin/daemon/start", headers={"X-CSRF-Token": csrf_token})
         assert resp2.status_code == 200

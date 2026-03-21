@@ -4,11 +4,13 @@ from fastapi.responses import HTMLResponse
 router = APIRouter()
 
 @router.get("/", response_class=HTMLResponse)
-async def list_queue(
+def list_queue(
     request: Request,
     status: str = Query(None),
     page: int = Query(1, ge=1),
 ):
+    if status and status not in ("pending", "running", "done", "failed"):
+        status = None
     templates = request.app.state.templates
     unob = request.app.state.unob
     try:
