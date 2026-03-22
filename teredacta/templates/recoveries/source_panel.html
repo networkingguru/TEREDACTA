@@ -29,7 +29,10 @@
     var mark = viewer.querySelector('mark');
     if (mark) {
         setTimeout(function() {
-            mark.scrollIntoView({ block: 'center' });
+            // Scroll the overflow container, not the page
+            var markTop = mark.offsetTop;
+            var viewerHeight = viewer.clientHeight;
+            viewer.scrollTop = markTop - (viewerHeight / 2);
         }, 100);
     }
 })();
