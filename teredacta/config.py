@@ -15,6 +15,7 @@ class TeredactaConfig:
     unobfuscator_path: str = ""
     unobfuscator_bin: str = ""
     db_path: str = ""
+    entity_db_path: str = ""
     pdf_cache_dir: str = ""
     output_dir: str = ""
     log_path: str = ""
@@ -81,6 +82,10 @@ def load_config(config_path: Optional[str] = None) -> TeredactaConfig:
         k: v for k, v in data.items()
         if k in TeredactaConfig.__dataclass_fields__
     })
+
+    # Default entity_db_path to sibling of db_path
+    if not cfg.entity_db_path:
+        cfg.entity_db_path = str(Path(cfg.db_path).parent / "teredacta_entities.db") if cfg.db_path else ""
 
     # Warn if a config file was loaded but no secret_key was persisted
     if config_path and "secret_key" not in data:
