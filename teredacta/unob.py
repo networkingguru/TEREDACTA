@@ -388,8 +388,11 @@ class UnobInterface:
                     if isinstance(seg, dict) and "text" in seg:
                         seg["text_html"] = self.format_merged_text(seg["text"])
                 result["recovered_segments"] = segs
-            # Pre-render merged text as safe HTML
-            result["merged_text_html"] = self.format_merged_text(result.get("merged_text") or "")
+            # Pre-render merged text as safe HTML (with segment mapping for click-to-source)
+            result["merged_text_html"] = self.format_merged_text(
+                result.get("merged_text") or "",
+                segments=result.get("recovered_segments"),
+            )
 
             # Get group members with PDF cache paths.
             # Limit to source docs + top donors by similarity to avoid
@@ -705,16 +708,54 @@ class UnobInterface:
     # --- Text Formatting ---
 
     @staticmethod
-    def format_merged_text(text: str) -> str:
+    def format_merged_text(text: str, segments: list = None) -> str:
         """Convert merged text to safe HTML for display.
         Escapes all HTML, then converts known Unobfuscator markup back to styled elements.
+
+        When *segments* is provided (list of dicts with 'text' and 'source_doc_id'),
+        recovered passages are annotated with data-segment-index and data-source-doc
+        attributes to support click-to-source jumping.
         """
+        # Build a lookup of normalised segment text -> (index, source_doc_id)
+        seg_lookup = {}
+        if segments:
+            for idx, seg in enumerate(segments):
+                if isinstance(seg, dict) and seg.get("text"):
+                    norm = " ".join(seg["text"].split())
+                    seg_lookup[norm] = (idx, seg.get("source_doc_id", ""))
+
+        def _match_segment(recovered_text: str) -> str:
+            """Return data attribute string if recovered text matches a segment."""
+            norm = " ".join(recovered_text.split())
+            if not norm:
+                return ""
+            # Exact match
+            if norm in seg_lookup:
+                idx, doc_id = seg_lookup[norm]
+                return f' data-segment-index="{idx}" data-source-doc="{html.escape(doc_id)}" title="Click to view source document"'
+            # Substring match: find longest segment that contains this text or vice versa
+            best = None
+            best_len = 0
+            for seg_norm, (idx, doc_id) in seg_lookup.items():
+                if norm in seg_norm or seg_norm in norm:
+                    if len(seg_norm) > best_len:
+                        best = (idx, doc_id)
+                        best_len = len(seg_norm)
+            if best:
+                idx, doc_id = best
+                return f' data-segment-index="{idx}" data-source-doc="{html.escape(doc_id)}" title="Click to view source document"'
+            return ""
+
         # Escape everything first
         escaped = html.escape(text)
+
         # <change><u>recovered text</u></change> → highlighted span
-        escaped = _RE_CHANGE_U.sub(
-            r'<mark class="recovered-inline">\1</mark>', escaped
-        )
+        def _replace_recovered(m: re.Match) -> str:
+            inner = m.group(1)
+            attrs = _match_segment(inner) if segments else ""
+            return f'<mark class="recovered-inline"{attrs}>{inner}</mark>'
+
+        escaped = _RE_CHANGE_U.sub(_replace_recovered, escaped)
         # <change> without <u> (partial markup)
         escaped = _RE_CHANGE_BARE.sub("", escaped)
         escaped = _RE_U_BARE.sub("", escaped)
