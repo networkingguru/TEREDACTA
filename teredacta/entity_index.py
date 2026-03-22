@@ -18,14 +18,75 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 
 _PERSON_STOP = frozenset({
+    # Courts and legal
     "united states", "southern district", "northern district",
     "eastern district", "western district", "circuit court",
-    "district court", "supreme court", "palm beach", "new york",
+    "district court", "supreme court", "states attorney",
+    "assistant united", "special agent", "attorney general",
+    "inspector general", "protective order", "certificate of",
+    "sex offender", "human trafficking", "task force",
+    "discovery issues", "child exploitation",
+    # Locations
+    "palm beach", "west palm", "new york", "new mexico",
     "virgin islands", "mar lago", "san diego", "los angeles",
-    "las vegas", "page break", "case number", "case summary",
-    "search warrant", "release batch", "data set", "match group",
-    "original notes", "victim assistance", "senior forensic",
-    "federal bureau",
+    "las vegas", "fort lauderdale", "park avenue", "lexington avenue",
+    "arizona state", "el brillo", "little st", "one saint",
+    "australian ave", "of florida", "fl new",
+    # Document/email artifacts
+    "page break", "case number", "case summary", "search warrant",
+    "release batch", "data set", "match group", "original notes",
+    "original message", "key information", "external email",
+    "email details", "flight information", "travel details",
+    "date sent", "subject re", "reply to", "thanks from",
+    "from sent", "message from", "sent tue", "sent wed",
+    "sent mon", "sent fri", "sent thu", "sent sat", "sent sun",
+    "confidentiality notice", "normal attachments",
+    # Greetings/closings
+    "good morning", "hi lesley", "hi jeffrey", "hi thanks",
+    "hi we", "dear lesley", "best regards", "kind regards",
+    "thank you",
+    # Date/time fragments
+    "on jul", "on jun", "on jan", "on feb", "on mar", "on apr",
+    "on may", "on aug", "on sep", "on oct", "on nov", "on dec",
+    "on mon", "on tue", "on wed", "on thu", "on fri", "on sat", "on sun",
+    "on behalf", "pm edt", "am edt", "pm est", "am est",
+    "eastern time", "estimated time",
+    # Business titles/terms
+    "wealth management", "private wealth", "private bank",
+    "managing director", "relationship manager", "executive assistant",
+    "vice president", "assistant vice", "project controller",
+    "global services", "southern financial", "southern trust",
+    "bank trust", "trust company", "company americas",
+    "securities inc", "associates inc", "field office",
+    "economy class", "departure terminal", "centurion travel",
+    "space exploration", "inquiry regarding",
+    # Misc false positives
+    "blacked out", "do not", "in the", "of the", "operated by",
+    "samsung galaxy", "last name", "epstein date", "epstein victim",
+    "epstein victims", "airline record", "ticket number",
+    "incl ticketno", "mr epstein", "fbi ny",
+    # Organizations (avoid double-counting as person)
+    "american express", "deutsche bank", "deutsche asset",
+    "goldman sachs", "boies schiller", "quinney college",
+    "freedom air", "hyperion air",
+    # Senior/forensic (partial matches from documents)
+    "senior forensic", "federal bureau", "coordinator senior",
+    "forensic examiner", "ny cart",
+    # Address/building fragments
+    "floor new", "plaza new", "avenue new",
+    # Misc institutions
+    "law offices", "metropolitan correctional",
+    # Repeated/reversed names
+    "lesley lesley", "epstein jeffrey", "jefffrey epstein",
+    # Company+name merges
+    "molotkova centurion",
+})
+
+# First words that are never the start of a person's name
+_PERSON_BAD_FIRST = frozenset({
+    "on", "in", "of", "hi", "do", "fl", "re", "to", "pm", "am",
+    "no", "if", "at", "by", "or", "an", "us", "my", "so", "up",
+    "mr", "ms", "dr",  # titles — could be valid but too noisy
 })
 
 _KNOWN_ORGS = [
@@ -102,21 +163,37 @@ def extract_entities(text: str) -> list[dict]:
             _add(loc, "location")
 
     # --- People ---
+    def _valid_person(name: str) -> bool:
+        """Filter out common false positives from person name matches."""
+        if name.lower() in _PERSON_STOP:
+            return False
+        words = name.split()
+        if len(words) < 2:
+            return False
+        # Reject names with newlines or tabs (regex matched across lines)
+        if "\n" in name or "\t" in name:
+            return False
+        # Reject if first word is a known non-name starter
+        if words[0].lower() in _PERSON_BAD_FIRST:
+            return False
+        # Reject if any word is only 1-2 chars (except initials like "J."
+        # and known suffixes like "Jr", "Sr", "IV")
+        _SUFFIXES = {"jr", "sr", "ii", "iii", "iv"}
+        for w in words:
+            if len(w) <= 2 and not w.endswith(".") and w.lower() not in _SUFFIXES:
+                return False
+        return True
+
     for m in _RE_PERSON_TITLE.finditer(text):
         name = m.group(1).strip()
-        if name.lower() in _PERSON_STOP:
-            continue
-        # Skip single-word or very short matches that leak through
-        if len(name.split()) < 2:
+        if not _valid_person(name):
             continue
         _add(name, "person")
 
     for m in _RE_PERSON_CAPS.finditer(text):
         raw = m.group(1).strip()
         name = _normalize_caps_name(raw)
-        if name.lower() in _PERSON_STOP:
-            continue
-        if len(name.split()) < 2:
+        if not _valid_person(name):
             continue
         _add(name, "person")
 
