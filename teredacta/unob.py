@@ -74,7 +74,7 @@ def parse_boolean_search(query: str) -> list[tuple[str, str]]:
             pending_op = "AND"
         elif upper == "OR":
             pending_op = "OR"
-        else:
+        elif tok:  # skip empty tokens (e.g. from empty quotes "")
             result.append((tok, pending_op))
             pending_op = "AND"  # default between adjacent terms
 
@@ -916,8 +916,12 @@ class UnobInterface:
                     seg_lookup[norm] = (idx, seg.get("source_doc_id", ""))
 
         def _match_segment(recovered_text: str) -> str:
-            """Return data attribute string if recovered text matches a segment."""
-            norm = " ".join(recovered_text.split())
+            """Return data attribute string if recovered text matches a segment.
+            recovered_text may be HTML-escaped (from the regex match on escaped text),
+            so we unescape it before comparing against the raw segment text."""
+            # Unescape HTML entities so we can compare against raw segment text
+            unescaped = html.unescape(recovered_text)
+            norm = " ".join(unescaped.split())
             if not norm:
                 return ""
             # Exact match
@@ -950,6 +954,33 @@ class UnobInterface:
         # <change> without <u> (partial markup)
         escaped = _RE_CHANGE_BARE.sub("", escaped)
         escaped = _RE_U_BARE.sub("", escaped)
+
+        # Fallback: if no <change><u> markup was present but segments exist,
+        # search for segment text directly in the escaped text and wrap matches.
+        # This handles merged texts that contain recovered content inline
+        # without Unobfuscator markup (common for large concatenated merges).
+        if segments and "recovered-inline" not in escaped:
+            for idx, seg in enumerate(segments):
+                if not isinstance(seg, dict) or not seg.get("text"):
+                    continue
+                seg_text = seg["text"].strip()
+                if len(seg_text) < 10:
+                    continue
+                # Use a unique-enough prefix (first 60 chars) to find the segment
+                search_key = html.escape(seg_text[:60])
+                if search_key in escaped:
+                    doc_id = html.escape(seg.get("source_doc_id", ""))
+                    tag_open = (
+                        f'<mark class="recovered-inline" '
+                        f'data-segment-index="{idx}" '
+                        f'data-source-doc="{doc_id}" '
+                        f'title="Click to view source document">'
+                    )
+                    # Wrap just the first occurrence of the full escaped segment text
+                    full_escaped = html.escape(seg_text)
+                    escaped = escaped.replace(
+                        full_escaped, f"{tag_open}{full_escaped}</mark>", 1
+                    )
         # Restore table markup that was originally inserted by the Unobfuscator
         # tool. We only restore tags that appear in a valid table structure
         # (table containing tr/th/td rows) to avoid injecting HTML if
