@@ -618,17 +618,47 @@ class UnobInterface:
                         pdf_cached = True
                         pdf_cache_path = f"{doc_row['release_batch']}/{doc_row['original_filename']}"
 
-            # Build pre-escaped highlighted HTML for safe template rendering (C1)
+            # Build a focused excerpt: ~500 chars before/after the recovered
+            # passage in the source document, with the passage highlighted.
+            # This is much more useful than showing the full 200KB+ source text
+            # and trying to scroll to the right spot.
             highlighted_text = ""
             if extracted_text and recovered_text:
-                safe_full = html.escape(extracted_text)
-                safe_recovered = html.escape(recovered_text)
-                highlighted_text = safe_full.replace(
-                    safe_recovered,
-                    '<mark class="recovered-inline" id="source-match">' + safe_recovered + '</mark>',
-                )
+                pos = extracted_text.find(recovered_text)
+                if pos < 0:
+                    # Try normalized whitespace match
+                    norm_rec = " ".join(recovered_text.split())
+                    norm_ext = " ".join(extracted_text.split())
+                    pos = norm_ext.find(norm_rec)
+                    if pos >= 0:
+                        # Map back to original positions approximately
+                        extracted_text = norm_ext
+                if pos >= 0:
+                    # Extract surrounding context
+                    start = max(0, pos - 500)
+                    end = min(len(extracted_text), pos + len(recovered_text) + 500)
+                    excerpt = extracted_text[start:end]
+                    # Adjust recovered_text position within excerpt
+                    rec_start = pos - start
+                    before = html.escape(excerpt[:rec_start])
+                    middle = html.escape(excerpt[rec_start:rec_start + len(recovered_text)])
+                    after = html.escape(excerpt[rec_start + len(recovered_text):])
+                    ellipsis_before = "..." if start > 0 else ""
+                    ellipsis_after = "..." if end < len(extracted_text) else ""
+                    highlighted_text = (
+                        f'{ellipsis_before}{before}'
+                        f'<mark class="recovered-inline">{middle}</mark>'
+                        f'{after}{ellipsis_after}'
+                    )
+                else:
+                    # Can't find passage — show first 1000 chars as fallback
+                    highlighted_text = html.escape(extracted_text[:1000])
+                    if len(extracted_text) > 1000:
+                        highlighted_text += "..."
             elif extracted_text:
-                highlighted_text = html.escape(extracted_text)
+                highlighted_text = html.escape(extracted_text[:1000])
+                if len(extracted_text) > 1000:
+                    highlighted_text += "..."
 
             return {
                 "source_doc_id": source_doc_id,

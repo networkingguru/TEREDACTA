@@ -19,44 +19,8 @@
 
 {% if highlighted_text %}
 <div style="margin-bottom:0.75rem;">
-    <span style="font-size:0.75rem;color:var(--text-secondary);display:block;margin-bottom:0.25rem;">Source document text (passage highlighted):</span>
-    <div class="log-viewer source-text-viewer" id="source-text-viewer" style="max-height:400px;font-size:0.8rem;line-height:1.6;position:relative;">{{ highlighted_text | safe }}</div>
-</div>
-<script>
-(function() {
-    var viewer = document.getElementById('source-text-viewer');
-    var mark = document.getElementById('source-match');
-    if (!viewer || !mark) return;
-
-    // viewer has position:relative and overflow-y:auto.
-    // mark.offsetTop is relative to its offsetParent.
-    // If offsetParent is the viewer, great. If not, walk up.
-    setTimeout(function() {
-        var top = 0;
-        var el = mark;
-        while (el && el !== viewer) {
-            top += el.offsetTop;
-            el = el.offsetParent;
-            // Safety: stop if we leave the viewer entirely
-            if (!el) break;
-        }
-        if (top > 0) {
-            viewer.scrollTop = top - (viewer.clientHeight / 3);
-        } else {
-            // Fallback: use percentage estimation based on text position
-            var textBefore = viewer.innerHTML.indexOf('id="source-match"');
-            var totalLen = viewer.innerHTML.length;
-            if (textBefore > 0 && totalLen > 0) {
-                viewer.scrollTop = (textBefore / totalLen) * viewer.scrollHeight;
-            }
-        }
-    }, 200);
-})();
-</script>
-{% elif extracted_text %}
-<div style="margin-bottom:0.75rem;">
-    <span style="font-size:0.75rem;color:var(--text-secondary);display:block;margin-bottom:0.25rem;">Source document text:</span>
-    <div class="log-viewer" style="max-height:400px;font-size:0.8rem;line-height:1.6;">{{ extracted_text }}</div>
+    <span style="font-size:0.75rem;color:var(--text-secondary);display:block;margin-bottom:0.25rem;">In source document:</span>
+    <div class="log-viewer" style="max-height:400px;font-size:0.85rem;line-height:1.7;">{{ highlighted_text | safe }}</div>
 </div>
 {% endif %}
 
