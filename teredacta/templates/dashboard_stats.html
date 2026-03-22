@@ -1,25 +1,25 @@
 <div class="stats-grid">
-    <div class="stat-card">
+    <div class="stat-card" title="Total number of documents loaded into the Unobfuscator database">
         <div class="stat-value">{{ stats.get('total_documents', 0) }}</div>
         <div class="stat-label">Documents</div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card" title="Groups of similar documents identified by fingerprint matching">
         <div class="stat-value">{{ stats.get('groups', 0) }}</div>
         <div class="stat-label">Match Groups</div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card" title="Redacted passages recovered by cross-referencing overlapping document releases">
         <div class="stat-value">{{ stats.get('recovered', 0) }}</div>
         <div class="stat-label">Redactions Recovered</div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card" title="Soft recoveries — partial or low-confidence matches">
         <div class="stat-value">{{ stats.get('soft_recovered', 0) }}</div>
         <div class="stat-label">Soft Redactions</div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card" title="Source PDFs that have been downloaded and processed">
         <div class="stat-value">{{ stats.get('pdfs_processed', 0) }}</div>
         <div class="stat-label">PDFs Processed</div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card" title="Processing jobs that encountered errors">
         <div class="stat-value">{{ stats.get('failed_jobs', 0) }}</div>
         <div class="stat-label">Failed Jobs</div>
     </div>

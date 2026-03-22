@@ -1,10 +1,10 @@
 <table class="data-table">
-    <thead><tr><th>Group</th><th>Recovered</th><th>Total Redacted</th><th>Soft</th><th>Output</th><th>Date</th></tr></thead>
+    <thead><tr><th title="Match group identifier">Group</th><th title="Number of redacted passages successfully recovered">Recovered</th><th title="Total redacted passages found in this document group">Total Redacted</th><th title="Soft recoveries — partial or low-confidence matches">Soft</th><th title="Whether a merged output PDF has been generated">Output</th><th title="Date the merge was processed">Date</th></tr></thead>
     <tbody>
     {% for r in recoveries %}
     <tr onclick="window.location='/recoveries/{{ r.group_id | tojson }}'">
         <td>#{{ r.group_id }}</td>
-        <td style="color:var(--accent-green);font-weight:700;">{{ r.recovered_count }}</td>
+        <td style="color:var(--accent-green);font-weight:700;" title="{{ r.recovered_count }} redacted passages were recovered by cross-referencing overlapping document releases">{{ r.recovered_count }}</td>
         <td>{{ r.total_redacted }}</td>
         <td>{{ r.soft_recovered_count or 0 }}</td>
         <td>{{ 'Yes' if r.output_generated else 'No' }}</td>

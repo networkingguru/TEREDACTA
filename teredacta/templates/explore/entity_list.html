@@ -2,7 +2,7 @@
 {% for ent in entities %}
 <div class="entity-item" data-entity-id="{{ ent.id }}" title="{{ ent.name }} — {{ ent.mention_count }} mention(s)">
     <span class="entity-name">{{ ent.name }}</span>
-    <span class="entity-type-badge">{{ ent.type }}</span>
+    <span class="entity-type-badge" title="{% if ent.type == 'person' %}Person — named individual found in recovered text{% elif ent.type == 'org' %}Organization — company, agency, or institution{% elif ent.type == 'location' %}Location — place name found in recovered text{% elif ent.type == 'email' %}Email address found in recovered text{% elif ent.type == 'phone' %}Phone number found in recovered text{% else %}{{ ent.type }}{% endif %}">{{ ent.type }}</span>
     <span class="entity-count" title="Appears in {{ ent.mention_count }} recovery group(s)">{{ ent.mention_count }}</span>
 </div>
 {% endfor %}

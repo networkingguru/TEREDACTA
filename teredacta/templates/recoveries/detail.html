@@ -2,7 +2,7 @@
 {% block title %}Recovery #{{ group_id }} — TEREDACTA{% endblock %}
 {% block nav_recoveries %}active{% endblock %}
 {% block content %}
-<h1>Recovery #{{ group_id }} <span style="color:var(--text-secondary);font-size:1rem;">— {{ recovery.recovered_count }} redactions recovered</span></h1>
+<h1>Recovery #{{ group_id }} <span style="color:var(--text-secondary);font-size:1rem;" title="{{ recovery.recovered_count }} redacted passages were recovered by cross-referencing overlapping document releases">— {{ recovery.recovered_count }} redactions recovered</span></h1>
 
 <div class="tabs" data-group-id="{{ group_id }}">
     <button class="tab active" hx-get="/recoveries/{{ group_id }}/tab/merged-text" hx-target="#tab-content" onclick="document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">Merged Text</button>

@@ -33,7 +33,7 @@
             <div class="stat-card" style="text-align:left;cursor:pointer;">
                 <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.375rem;">
                     <span style="font-size:0.95rem;font-weight:600;">{{ ent.name }}</span>
-                    <span class="entity-type-badge">{{ ent.type }}</span>
+                    <span class="entity-type-badge" title="{% if ent.type == 'person' %}Person — named individual found in recovered text{% elif ent.type == 'org' %}Organization — company, agency, or institution{% elif ent.type == 'location' %}Location — place name found in recovered text{% elif ent.type == 'email' %}Email address{% elif ent.type == 'phone' %}Phone number{% else %}{{ ent.type }}{% endif %}">{{ ent.type }}</span>
                 </div>
                 <p style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:0.375rem;" title="Number of recovery groups mentioning this entity">{{ ent.mention_count }} occurrence{{ 's' if ent.mention_count != 1 else '' }}</p>
                 {% if ent.sample %}
