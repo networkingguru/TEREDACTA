@@ -1,0 +1,27 @@
+<div class="source-panel-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+    <h4 style="margin:0;">Source: {{ source_doc_id }}</h4>
+    <button class="source-panel-close" aria-label="Close">&times;</button>
+</div>
+
+{% if recovered_text %}
+<div style="margin-bottom:1rem;padding:0.5rem;background:rgba(102,187,106,0.1);border-radius:4px;">
+    <span style="font-size:0.75rem;color:var(--text-secondary);display:block;margin-bottom:0.25rem;">Recovered passage:</span>
+    <mark class="recovered-inline">{{ recovered_text }}</mark>
+</div>
+{% endif %}
+
+{% if pdf_cached %}
+<div style="height:calc(100% - 120px);">
+    <iframe src="/pdf/cache/{{ pdf_cache_path }}#search={{ search_context | urlencode }}"
+            style="width:100%;height:100%;border:none;border-radius:4px;"
+            title="Source PDF"></iframe>
+</div>
+{% elif not has_pdf %}
+{% if extracted_text %}
+<div class="log-viewer" style="max-height:calc(100% - 120px);font-size:0.8rem;">{{ extracted_text | e | replace(recovered_text | e, '<mark class="recovered-inline">' ~ (recovered_text | e) ~ '</mark>') | safe }}</div>
+{% else %}
+<p style="color:var(--text-secondary);">Source document text not available.</p>
+{% endif %}
+{% else %}
+<p style="color:var(--text-secondary);">PDF not cached locally. <a href="/documents/{{ source_doc_id }}" style="color:var(--accent-blue);">View document details</a></p>
+{% endif %}

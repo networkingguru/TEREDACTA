@@ -62,6 +62,20 @@ def recovery_detail(request: Request, group_id: int):
         "csrf_token": getattr(request.state, "csrf_token", ""),
     })
 
+@router.get("/{group_id:int}/source", response_class=HTMLResponse)
+def source_panel(request: Request, group_id: int, segment_index: int = Query(..., ge=0)):
+    templates = request.app.state.templates
+    unob = request.app.state.unob
+    ctx = unob.get_source_context(group_id, segment_index)
+    if ctx is None:
+        return Response(status_code=404)
+    return templates.TemplateResponse("recoveries/source_panel.html", {
+        "request": request,
+        "group_id": group_id,
+        "segment_index": segment_index,
+        **ctx,
+    })
+
 @router.get("/{group_id:int}/tab/{tab_name}", response_class=HTMLResponse)
 def recovery_tab(request: Request, group_id: int, tab_name: str):
     templates = request.app.state.templates

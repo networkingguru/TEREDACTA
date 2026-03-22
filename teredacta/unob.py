@@ -452,6 +452,97 @@ class UnobInterface:
         finally:
             conn.close()
 
+    def get_source_context(self, group_id: int, segment_index: int) -> Optional[dict]:
+        """Get source document context for a recovered segment.
+
+        Returns a dict with source document info, surrounding unredacted text,
+        and PDF availability details.
+        """
+        conn = self._get_db()
+        try:
+            row = conn.execute(
+                "SELECT merged_text, recovered_segments FROM merge_results "
+                "WHERE group_id = ? AND recovered_count > 0",
+                (group_id,),
+            ).fetchone()
+            if row is None:
+                return None
+
+            segments = json.loads(row["recovered_segments"]) if row["recovered_segments"] else []
+            if segment_index < 0 or segment_index >= len(segments):
+                return None
+
+            seg = segments[segment_index]
+            if not isinstance(seg, dict):
+                return None
+
+            recovered_text = seg.get("text", "")
+            source_doc_id = seg.get("source_doc_id", "")
+
+            # Find surrounding unredacted context in the raw merged text
+            merged_text = row["merged_text"] or ""
+            search_context = ""
+            if recovered_text and merged_text:
+                # Strip <change><u>...</u></change> markup for plain-text search
+                plain = re.sub(r"</?(?:change|u)>", "", merged_text)
+                pos = plain.find(recovered_text)
+                if pos < 0:
+                    # Try normalised whitespace match
+                    norm_rec = " ".join(recovered_text.split())
+                    norm_plain = " ".join(plain.split())
+                    pos = norm_plain.find(norm_rec)
+                    plain = norm_plain
+                if pos >= 0:
+                    # Grab up to 40 chars before/after, skipping [REDACTED] markers
+                    before = plain[:pos]
+                    after = plain[pos + len(recovered_text):]
+                    # Remove redaction markers from context
+                    before = re.sub(r"\[REDACTED\]|\[b\(6\)\]|XXXXXXXXX", "", before).strip()
+                    after = re.sub(r"\[REDACTED\]|\[b\(6\)\]|XXXXXXXXX", "", after).strip()
+                    ctx_before = before[-40:].strip() if before else ""
+                    ctx_after = after[:40].strip() if after else ""
+                    search_context = f"{ctx_before} {recovered_text} {ctx_after}".strip()
+
+            if not search_context:
+                search_context = recovered_text
+
+            # Look up source document details
+            doc_row = conn.execute(
+                "SELECT text_source, pdf_url, release_batch, original_filename, extracted_text "
+                "FROM documents WHERE id = ?",
+                (source_doc_id,),
+            ).fetchone()
+
+            has_pdf = False
+            pdf_cached = False
+            pdf_cache_path = None
+            extracted_text = ""
+
+            if doc_row:
+                has_pdf = doc_row["text_source"] in _PDF_TEXT_SOURCES or bool(doc_row["pdf_url"])
+                extracted_text = doc_row["extracted_text"] or ""
+                if doc_row["release_batch"] and doc_row["original_filename"]:
+                    cache_file = (
+                        Path(self.config.pdf_cache_dir)
+                        / doc_row["release_batch"]
+                        / doc_row["original_filename"]
+                    )
+                    if cache_file.exists():
+                        pdf_cached = True
+                        pdf_cache_path = f"{doc_row['release_batch']}/{doc_row['original_filename']}"
+
+            return {
+                "source_doc_id": source_doc_id,
+                "recovered_text": recovered_text,
+                "search_context": search_context,
+                "has_pdf": has_pdf,
+                "pdf_cached": pdf_cached,
+                "pdf_cache_path": pdf_cache_path,
+                "extracted_text": extracted_text,
+            }
+        finally:
+            conn.close()
+
     def get_common_unredactions(
         self,
         min_occurrences: int = 2,
