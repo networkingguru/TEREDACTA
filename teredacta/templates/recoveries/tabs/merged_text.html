@@ -1,5 +1,14 @@
 <h3>Merged Text</h3>
 {% if recovery.merged_text_html %}
+<div class="recovery-toolbar" id="recovery-toolbar" style="display:none;">
+    <span id="recovery-count-label"></span>
+    <span class="recovery-toolbar-nav">
+        <button id="toolbar-prev" title="Previous recovered passage (keyboard: k)">&#9650;</button>
+        <span id="toolbar-position">0 / 0</span>
+        <button id="toolbar-next" title="Next recovered passage (keyboard: j)">&#9660;</button>
+    </span>
+    <span style="font-size:0.75rem;color:var(--text-secondary);margin-left:auto;" title="Press j/k to navigate, click a green passage to view its source document">click green text to view source</span>
+</div>
 <div class="log-viewer merged-text-viewer" style="line-height:1.8;">
 {{ recovery.merged_text_html | safe }}
 </div>
@@ -20,7 +29,7 @@
 {% set seg_text = seg.text | string %}
 {% if seg_text | length > 0 and not seg_text.startswith('The image') and not seg_text.startswith('This image') and not seg_text.startswith('This page') %}
 {% set ns.showed_any = true %}
-<div style="padding:0.5rem;border-bottom:1px solid var(--border);">
+<div style="padding:0.5rem;border-bottom:1px solid var(--border);cursor:pointer;" onclick="scrollToSegment({{ loop.index0 }})" title="Click to scroll to this passage in the merged text above">
     <span class="recovered">{{ seg.text_html | safe if seg.text_html else seg_text }}</span>
     <span style="color:var(--text-secondary);font-size:0.8rem;margin-left:0.5rem;">from {{ seg.source_doc_id }}</span>
 </div>
