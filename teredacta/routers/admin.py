@@ -265,3 +265,40 @@ def _get_disk_space(unob):
         }
     except Exception:
         return {"total_gb": 0, "used_gb": 0, "free_gb": 0, "percent_used": 0}
+
+# --- Entity Index ---
+
+@router.post("/entity-index/build")
+async def entity_index_build(request: Request):
+    if not _require_admin(request):
+        return Response(status_code=403)
+    if not _validate_csrf(request):
+        return Response(status_code=403)
+    entity_idx = request.app.state.entity_index
+    unob = request.app.state.unob
+    loop = asyncio.get_running_loop()
+    try:
+        result = await loop.run_in_executor(None, partial(entity_idx.build, unob.config.db_path))
+        return HTMLResponse(
+            f'<span>Built: {escape(str(result["entities"]))} entities, '
+            f'{escape(str(result["mentions"]))} mentions</span>'
+        )
+    except Exception as e:
+        return HTMLResponse(f"<span>Error: {escape(str(e))}</span>", status_code=500)
+
+@router.get("/entity-index/status", response_class=HTMLResponse)
+def entity_index_status(request: Request):
+    if not _require_admin(request):
+        return Response(status_code=403)
+    entity_idx = request.app.state.entity_index
+    unob = request.app.state.unob
+    status = entity_idx.get_status(unob.config.db_path)
+    state = status["state"]
+    if state == "not_built":
+        return HTMLResponse('<span class="text-muted">Not built</span>')
+    label = "Ready" if state == "ready" else "Stale — rebuild recommended"
+    return HTMLResponse(
+        f'<span>{escape(label)}: {status["entities"]} entities, '
+        f'{status["mentions"]} mentions<br>'
+        f'<small>Built: {escape(status["built_at"] or "never")}</small></span>'
+    )

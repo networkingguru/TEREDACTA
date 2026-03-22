@@ -13,6 +13,16 @@
         <div id="daemon-msg" style="font-size:0.8rem;color:var(--text-secondary);"></div>
         <div class="stat-label">Daemon Control</div>
     </div>
+    <div class="stat-card">
+        <div id="entity-status" hx-get="/admin/entity-index/status" hx-trigger="load">
+            <span class="text-muted">Loading...</span>
+        </div>
+        <div style="margin-top:0.5rem;">
+            <button class="btn btn-primary" hx-post="/admin/entity-index/build" hx-target="#entity-build-msg">Build / Rebuild</button>
+        </div>
+        <div id="entity-build-msg" style="font-size:0.8rem;color:var(--text-secondary);"></div>
+        <div class="stat-label">Entity Index</div>
+    </div>
 </div>
 <h2 style="margin-top:1.5rem;">Admin Pages</h2>
 <div style="display:flex;gap:1rem;flex-wrap:wrap;">

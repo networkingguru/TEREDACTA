@@ -9,6 +9,7 @@ from starlette.responses import HTMLResponse
 logger = logging.getLogger(__name__)
 from teredacta.auth import AuthManager
 from teredacta.config import TeredactaConfig
+from teredacta.entity_index import EntityIndex
 from teredacta.unob import UnobInterface
 
 def create_app(config: TeredactaConfig) -> FastAPI:
@@ -17,6 +18,7 @@ def create_app(config: TeredactaConfig) -> FastAPI:
     app.state.unob = UnobInterface(config)
     app.state.unob.ensure_indexes()
     app.state.auth = AuthManager(config)
+    app.state.entity_index = EntityIndex(config.entity_db_path)
 
     from teredacta.sse import SSEManager
     app.state.sse = SSEManager(poll_interval=config.sse_poll_interval_seconds, unob=app.state.unob)
