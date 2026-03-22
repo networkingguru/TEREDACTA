@@ -5,7 +5,7 @@ from html import escape
 from functools import partial
 from fastapi import APIRouter, Request, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
-from starlette.responses import Response, StreamingResponse
+from starlette.responses import Response
 
 router = APIRouter()
 
@@ -53,6 +53,21 @@ def admin_page(request: Request):
     if not config.admin_enabled:
         return templates.TemplateResponse("error.html", _ctx(request, error="Admin features are disabled. Set an admin password to enable."), status_code=403)
     return templates.TemplateResponse("admin/dashboard.html", _ctx(request))
+
+@router.get("/stats-fragment", response_class=HTMLResponse)
+async def stats_fragment(request: Request):
+    if not _require_admin(request):
+        return Response(status_code=403)
+    templates = request.app.state.templates
+    unob = request.app.state.unob
+    loop = asyncio.get_running_loop()
+    try:
+        stats = await loop.run_in_executor(None, unob.get_stats)
+    except FileNotFoundError:
+        stats = {}
+    return templates.TemplateResponse("dashboard_stats.html", {
+        "request": request, "stats": stats,
+    })
 
 @router.post("/login")
 async def login(request: Request):

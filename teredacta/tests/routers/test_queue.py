@@ -1,10 +1,10 @@
 class TestJobQueue:
     def test_list_returns_200(self, client):
-        resp = client.get("/queue")
+        resp = client.get("/admin/queue")
         assert resp.status_code == 200
 
     def test_filter_by_status(self, client):
-        resp = client.get("/queue?status=pending")
+        resp = client.get("/admin/queue?status=pending")
         assert resp.status_code == 200
 
 class TestSummary:

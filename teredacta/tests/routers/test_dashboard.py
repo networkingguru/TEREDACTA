@@ -3,18 +3,18 @@ from unittest.mock import AsyncMock, patch
 
 
 class TestDashboard:
-    def test_dashboard_returns_200(self, client):
-        resp = client.get("/")
+    def test_admin_dashboard_returns_200(self, client):
+        resp = client.get("/admin/")
         assert resp.status_code == 200
         assert "TEREDACTA" in resp.text
 
-    def test_dashboard_shows_stats(self, client, mock_db, test_config):
+    def test_admin_dashboard_shows_stats(self, client, mock_db, test_config):
         import sqlite3
         conn = sqlite3.connect(str(mock_db))
         conn.execute("INSERT INTO documents (id, source, text_processed) VALUES ('d1', 'doj', 1)")
         conn.commit()
         conn.close()
-        resp = client.get("/")
+        resp = client.get("/admin/")
         assert resp.status_code == 200
 
     def test_sse_endpoint_no_sse(self, app, client):

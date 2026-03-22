@@ -6,7 +6,7 @@
 <p style="color: var(--text-secondary); margin-bottom: 1rem;">{{ doc.original_filename or 'Unknown filename' }} · {{ doc.source }} · {{ doc.release_batch or 'No batch' }}</p>
 
 {% if doc.get('group_id') %}
-<p><a href="/groups/{{ doc.group_id }}" style="color: var(--accent-blue);">View Match Group #{{ doc.group_id }}</a> (similarity: {{ "%.2f"|format(doc.similarity) }})</p>
+<p><a href="/admin/groups/{{ doc.group_id }}" style="color: var(--accent-blue);">View Match Group #{{ doc.group_id }}</a> (similarity: {{ "%.2f"|format(doc.similarity) }})</p>
 {% else %}
 <p style="color:var(--text-secondary);">Not in any match group.</p>
 {% endif %}

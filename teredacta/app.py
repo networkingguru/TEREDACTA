@@ -1,6 +1,7 @@
 from pathlib import Path
 import logging
 from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.responses import HTMLResponse
@@ -36,15 +37,32 @@ def create_app(config: TeredactaConfig) -> FastAPI:
         response = await call_next(request)
         return response
 
-    from teredacta.routers import dashboard, documents, groups, recoveries, pdf, queue, summary, admin
-    app.include_router(dashboard.router)
+    from teredacta.routers import dashboard, documents, groups, recoveries, pdf, queue, summary, admin, explore, highlights
+
+    # SSE at root (all users need daemon status in nav)
+    app.include_router(dashboard.sse_router)
+
+    # Public pages
+    app.include_router(explore.router)
+    app.include_router(highlights.router, prefix="/highlights")
     app.include_router(documents.router, prefix="/documents")
-    app.include_router(groups.router, prefix="/groups")
     app.include_router(recoveries.router, prefix="/recoveries")
     app.include_router(pdf.router, prefix="/pdf")
-    app.include_router(queue.router, prefix="/queue")
     app.include_router(summary.router, prefix="/summary")
+
+    # Admin pages
     app.include_router(admin.router, prefix="/admin")
+    app.include_router(groups.router, prefix="/admin/groups")
+    app.include_router(queue.router, prefix="/admin/queue")
+
+    # Redirects for old URLs
+    @app.get("/groups/{path:path}")
+    def redirect_groups(path: str):
+        return RedirectResponse(f"/admin/groups/{path}", status_code=301)
+
+    @app.get("/queue/{path:path}")
+    def redirect_queue(path: str):
+        return RedirectResponse(f"/admin/queue/{path}", status_code=301)
 
     @app.exception_handler(FileNotFoundError)
     async def db_not_found_handler(request: Request, exc: FileNotFoundError):

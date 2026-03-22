@@ -37,10 +37,14 @@ def full_db(mock_db):
     return mock_db
 
 class TestFullNavigation:
-    def test_dashboard(self, client, full_db):
+    def test_explore_page(self, client, full_db):
         resp = client.get("/")
         assert resp.status_code == 200
-        assert "5" in resp.text
+        assert "Explore" in resp.text
+
+    def test_admin_dashboard(self, client, full_db):
+        resp = client.get("/admin/")
+        assert resp.status_code == 200
 
     def test_documents_list(self, client, full_db):
         resp = client.get("/documents")
@@ -56,11 +60,11 @@ class TestFullNavigation:
         assert resp.status_code == 200
 
     def test_groups_list(self, client, full_db):
-        resp = client.get("/groups")
+        resp = client.get("/admin/groups")
         assert resp.status_code == 200
 
     def test_group_detail(self, client, full_db):
-        resp = client.get("/groups/1")
+        resp = client.get("/admin/groups/1")
         assert resp.status_code == 200
         assert "doc-0" in resp.text
 
@@ -77,7 +81,7 @@ class TestFullNavigation:
         assert resp.status_code == 200
 
     def test_queue(self, client, full_db):
-        resp = client.get("/queue")
+        resp = client.get("/admin/queue")
         assert resp.status_code == 200
 
     def test_admin_local(self, client, full_db):
@@ -91,7 +95,17 @@ class TestFullNavigation:
         assert r2.status_code == 200
         r3 = client.get("/documents/doc-0")
         assert r3.status_code == 200
-        r4 = client.get("/groups/1")
+        r4 = client.get("/admin/groups/1")
         assert r4.status_code == 200
         r5 = client.get("/recoveries/1")
         assert r5.status_code == 200
+
+    def test_old_groups_url_redirects(self, client, full_db):
+        resp = client.get("/groups/1", follow_redirects=False)
+        assert resp.status_code == 301
+        assert resp.headers["location"] == "/admin/groups/1"
+
+    def test_old_queue_url_redirects(self, client, full_db):
+        resp = client.get("/queue/", follow_redirects=False)
+        assert resp.status_code == 301
+        assert resp.headers["location"] == "/admin/queue/"
