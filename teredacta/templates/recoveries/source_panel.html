@@ -10,18 +10,36 @@
 </div>
 {% endif %}
 
-{% if pdf_cached %}
-<div style="height:calc(100% - 120px);">
-    <iframe src="/pdf/cache/{{ pdf_cache_path }}#search={{ search_context | urlencode }}"
-            style="width:100%;height:100%;border:none;border-radius:4px;"
-            title="Source PDF"></iframe>
+{% if search_context %}
+<div style="margin-bottom:1rem;padding:0.5rem;background:rgba(255,255,255,0.03);border-radius:4px;">
+    <span style="font-size:0.75rem;color:var(--text-secondary);display:block;margin-bottom:0.25rem;">Surrounding context in source document:</span>
+    <div style="font-size:0.85rem;line-height:1.6;color:var(--text-primary);">{{ search_context }}</div>
 </div>
-{% elif not has_pdf %}
-{% if extracted_text %}
-<div class="log-viewer" style="max-height:calc(100% - 120px);font-size:0.8rem;">{{ highlighted_text | safe }}</div>
-{% else %}
-<p style="color:var(--text-secondary);">Source document text not available.</p>
 {% endif %}
-{% else %}
-<p style="color:var(--text-secondary);">PDF not cached locally. <a href="/documents/{{ source_doc_id }}" style="color:var(--accent-blue);">View document details</a></p>
+
+{% if highlighted_text %}
+<div style="margin-bottom:0.75rem;">
+    <span style="font-size:0.75rem;color:var(--text-secondary);display:block;margin-bottom:0.25rem;">Source document text (passage highlighted):</span>
+    <div class="log-viewer" style="max-height:400px;font-size:0.8rem;line-height:1.6;">{{ highlighted_text | safe }}</div>
+</div>
+{% elif extracted_text %}
+<div style="margin-bottom:0.75rem;">
+    <span style="font-size:0.75rem;color:var(--text-secondary);display:block;margin-bottom:0.25rem;">Source document text:</span>
+    <div class="log-viewer" style="max-height:400px;font-size:0.8rem;line-height:1.6;">{{ extracted_text }}</div>
+</div>
 {% endif %}
+
+<div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+    {% if pdf_cached %}
+    <a href="/pdf/view?type=cache&path={{ pdf_cache_path | urlencode }}" target="_blank" class="btn btn-primary" style="font-size:0.8rem;" title="Open the full PDF in a new tab">
+        View PDF
+    </a>
+    {% elif has_pdf %}
+    <span style="font-size:0.8rem;color:var(--text-secondary);">PDF not cached locally</span>
+    {% else %}
+    <span style="font-size:0.8rem;color:var(--text-secondary);" title="This is an email record — no PDF exists">No PDF (email record)</span>
+    {% endif %}
+    <a href="/documents/{{ source_doc_id }}" class="btn" style="font-size:0.8rem;background:rgba(255,255,255,0.08);border:1px solid var(--border);" title="View full document details">
+        Document Details
+    </a>
+</div>

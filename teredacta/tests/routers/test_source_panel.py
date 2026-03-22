@@ -58,7 +58,7 @@ class TestSourcePanel:
     def test_source_panel_pdf_cached(self, client, seeded_recovery):
         resp = client.get("/recoveries/50/source?segment_index=0")
         assert resp.status_code == 200
-        assert "iframe" in resp.text  # PDF embed
+        assert "View PDF" in resp.text  # Link to open PDF in new tab
 
     def test_source_panel_no_pdf(self, client, seeded_recovery):
         # Segment 1 is from src-002 which has text_source=jmail (no PDF)
