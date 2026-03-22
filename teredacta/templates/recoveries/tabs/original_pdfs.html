@@ -3,7 +3,7 @@
 <div class="comparison-controls">
     <select id="donor-select" class="filter-select" onchange="updateDonor(this.options[this.selectedIndex])">
         {% for m in recovery.members %}
-        <option value="{{ m.doc_id }}" data-pdf-path="{{ m.pdf_cache_path or '' }}">{{ m.doc_id }} ({{ "%.2f"|format(m.similarity) if m.similarity else '?' }})</option>
+        <option value="{{ m.doc_id }}" data-pdf-path="{{ m.pdf_cache_path or '' }}" data-has-pdf="{{ 'true' if m.has_pdf else 'false' }}">{{ m.doc_id }} ({{ "%.2f"|format(m.similarity) if m.similarity else '?' }})</option>
         {% endfor %}
     </select>
     <button class="btn btn-primary" onclick="toggleComparison(this)">Single View</button>
@@ -15,6 +15,8 @@
         <h4>{{ recovery.members[0].doc_id }}</h4>
         {% if recovery.members[0].pdf_cache_path %}
         <iframe src="/pdf/embed?type=cache&path={{ recovery.members[0].pdf_cache_path | urlencode }}" style="width:100%;height:600px;border:none;background:#525659;"></iframe>
+        {% elif not recovery.members[0].has_pdf %}
+        <p style="color:var(--text-secondary);padding:1rem;">No PDF available — this is an email record. Text was extracted directly from the email archive.</p>
         {% else %}
         <p style="color:var(--text-secondary);padding:1rem;">PDF not yet downloaded to local cache. Run <code>unobfuscator fetch</code> to populate.</p>
         {% endif %}
@@ -25,6 +27,8 @@
         <h4 id="donor-title">{{ recovery.members[1].doc_id }}</h4>
         {% if recovery.members[1].pdf_cache_path %}
         <iframe id="donor-iframe" src="/pdf/embed?type=cache&path={{ recovery.members[1].pdf_cache_path | urlencode }}" style="width:100%;height:600px;border:none;background:#525659;"></iframe>
+        {% elif not recovery.members[1].has_pdf %}
+        <p style="color:var(--text-secondary);padding:1rem;">No PDF available — this is an email record. Text was extracted directly from the email archive.</p>
         {% else %}
         <p style="color:var(--text-secondary);padding:1rem;">PDF not yet downloaded to local cache. Run <code>unobfuscator fetch</code> to populate.</p>
         {% endif %}
@@ -36,6 +40,7 @@
 function updateDonor(option) {
     const docId = option.value;
     const pdfPath = option.dataset.pdfPath;
+    const hasPdf = option.dataset.hasPdf === 'true';
     const pane = document.getElementById('donor-pane');
     pane.textContent = '';
     const title = document.createElement('h4');
@@ -52,7 +57,9 @@ function updateDonor(option) {
     } else {
         const msg = document.createElement('p');
         msg.style.cssText = 'color:var(--text-secondary);padding:1rem;';
-        msg.textContent = 'PDF not yet downloaded to local cache. Run unobfuscator fetch to populate.';
+        msg.textContent = hasPdf
+            ? 'PDF not yet downloaded to local cache. Run unobfuscator fetch to populate.'
+            : 'No PDF available \u2014 this is an email record. Text was extracted directly from the email archive.';
         pane.appendChild(msg);
     }
 }

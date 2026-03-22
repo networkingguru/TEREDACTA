@@ -55,15 +55,18 @@ class TeredactaConfig:
         )
 
 
+def config_search_paths() -> list[Path]:
+    """Return config search paths, evaluated at call time so cwd/HOME are current."""
+    return [
+        Path.cwd() / "teredacta.yaml",
+        Path.home() / ".teredacta" / "config.yaml",
+    ]
+
+
 def load_config(config_path: Optional[str] = None) -> TeredactaConfig:
     """Load config from YAML file, with env var overrides."""
     if config_path is None:
-        # Search default locations
-        candidates = [
-            Path.cwd() / "teredacta.yaml",
-            Path.home() / ".teredacta" / "config.yaml",
-        ]
-        for candidate in candidates:
+        for candidate in config_search_paths():
             if candidate.exists():
                 config_path = str(candidate)
                 break

@@ -12,6 +12,9 @@ from typing import Optional
 
 from teredacta.config import TeredactaConfig
 
+# text_source values that indicate a downloadable PDF exists
+_PDF_TEXT_SOURCES = frozenset({"pdf_text_layer", "ocr"})
+
 # Pre-compiled regexes for format_merged_text
 _RE_CHANGE_U = re.compile(
     r"&lt;change&gt;&lt;u&gt;(.*?)&lt;/u&gt;&lt;/change&gt;", re.DOTALL
@@ -395,7 +398,7 @@ class UnobInterface:
             placeholders = ",".join("?" for _ in source_ids) if source_ids else "''"
             members = conn.execute(
                 f"SELECT mgm.doc_id, mgm.similarity, d.original_filename, d.source, "
-                f"d.release_batch "
+                f"d.release_batch, d.text_source, d.pdf_url "
                 f"FROM match_group_members mgm "
                 f"JOIN documents d ON mgm.doc_id = d.id "
                 f"WHERE mgm.group_id = ? "
@@ -412,12 +415,13 @@ class UnobInterface:
             member_list = []
             for m in members:
                 member = dict(m)
-                # Compute cache PDF path: {release_batch}/{original_filename}
                 if m["release_batch"] and m["original_filename"]:
                     cache_path = Path(self.config.pdf_cache_dir) / m["release_batch"] / m["original_filename"]
                     member["pdf_cache_path"] = f"{m['release_batch']}/{m['original_filename']}" if cache_path.exists() else None
                 else:
                     member["pdf_cache_path"] = None
+                # jmail/backfill_miss docs are email records with no PDF representation
+                member["has_pdf"] = m["text_source"] in _PDF_TEXT_SOURCES or bool(m["pdf_url"])
                 member_list.append(member)
             result["members"] = member_list
 

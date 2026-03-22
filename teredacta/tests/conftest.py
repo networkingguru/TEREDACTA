@@ -40,7 +40,10 @@ def mock_db(tmp_dir):
             pdf_url TEXT,
             indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             text_processed BOOLEAN DEFAULT 0,
-            pdf_processed BOOLEAN DEFAULT 0
+            pdf_processed BOOLEAN DEFAULT 0,
+            text_source TEXT,
+            ocr_processed BOOLEAN DEFAULT 0,
+            page_tags TEXT
         );
         CREATE TABLE IF NOT EXISTS document_fingerprints (
             doc_id TEXT PRIMARY KEY REFERENCES documents(id),
