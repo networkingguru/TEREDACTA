@@ -4,7 +4,7 @@
 {% block content %}
 <h1>Recovery #{{ group_id }} <span style="color:var(--text-secondary);font-size:1rem;">— {{ recovery.recovered_count }} redactions recovered</span></h1>
 
-<div class="tabs">
+<div class="tabs" data-group-id="{{ group_id }}">
     <button class="tab active" hx-get="/recoveries/{{ group_id }}/tab/merged-text" hx-target="#tab-content" onclick="document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">Merged Text</button>
     <button class="tab" hx-get="/recoveries/{{ group_id }}/tab/output-pdf" hx-target="#tab-content" onclick="document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">Output PDF</button>
     <button class="tab" hx-get="/recoveries/{{ group_id }}/tab/original-pdfs" hx-target="#tab-content" onclick="document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">Original PDFs</button>
@@ -13,4 +13,6 @@
 <div id="tab-content" class="tab-content">
     {% include "recoveries/tabs/merged_text.html" %}
 </div>
+<div id="source-panel" class="source-panel"></div>
+<script src="/static/js/source-panel.js"></script>
 {% endblock %}
