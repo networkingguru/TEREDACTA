@@ -19,7 +19,7 @@
 
 {% if highlighted_text %}
 <div style="margin-bottom:0.75rem;">
-    <span style="font-size:0.75rem;color:var(--text-secondary);display:block;margin-bottom:0.25rem;" title="This is from the original source release — it may show names and details that appear as [REDACTED] in the merged text on the left">In source release (may differ from merged text — redacted names may be visible here):</span>
+    <span style="font-size:0.75rem;color:var(--text-secondary);display:block;margin-bottom:0.25rem;" title="This is a different release of the same document that had fewer redactions. The structure may differ because the two releases don't always have identical formatting or page breaks.">From the less-redacted release ({{ source_doc_id }}):</span>
     <div class="log-viewer" style="max-height:400px;font-size:0.85rem;line-height:1.7;">{{ highlighted_text | safe }}</div>
 </div>
 {% endif %}
