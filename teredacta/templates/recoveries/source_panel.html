@@ -20,8 +20,20 @@
 {% if highlighted_text %}
 <div style="margin-bottom:0.75rem;">
     <span style="font-size:0.75rem;color:var(--text-secondary);display:block;margin-bottom:0.25rem;">Source document text (passage highlighted):</span>
-    <div class="log-viewer" style="max-height:400px;font-size:0.8rem;line-height:1.6;">{{ highlighted_text | safe }}</div>
+    <div class="log-viewer source-text-viewer" id="source-text-viewer" style="max-height:400px;font-size:0.8rem;line-height:1.6;">{{ highlighted_text | safe }}</div>
 </div>
+<script>
+(function() {
+    var viewer = document.getElementById('source-text-viewer');
+    if (!viewer) return;
+    var mark = viewer.querySelector('mark');
+    if (mark) {
+        setTimeout(function() {
+            mark.scrollIntoView({ block: 'center' });
+        }, 100);
+    }
+})();
+</script>
 {% elif extracted_text %}
 <div style="margin-bottom:0.75rem;">
     <span style="font-size:0.75rem;color:var(--text-secondary);display:block;margin-bottom:0.25rem;">Source document text:</span>
@@ -39,7 +51,7 @@
     {% else %}
     <span style="font-size:0.8rem;color:var(--text-secondary);" title="This is an email record — no PDF exists">No PDF (email record)</span>
     {% endif %}
-    <a href="/documents/{{ source_doc_id }}" class="btn" style="font-size:0.8rem;background:rgba(255,255,255,0.08);border:1px solid var(--border);" title="View full document details">
+    <a href="/documents/{{ source_doc_id }}" class="btn" style="font-size:0.8rem;background:rgba(255,255,255,0.08);border:1px solid var(--border);color:var(--text-primary);" title="View full document details">
         Document Details
     </a>
 </div>
