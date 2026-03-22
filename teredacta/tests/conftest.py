@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import tempfile
 from pathlib import Path
@@ -7,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from teredacta.config import TeredactaConfig
+from teredacta.entity_index import EntityIndex
 
 
 @pytest.fixture
@@ -131,3 +133,74 @@ def app(test_config):
 def client(app):
     """Create a test HTTP client."""
     return TestClient(app)
+
+
+# ---------------------------------------------------------------------------
+# Entity index fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def entity_db_path(tmp_dir):
+    """Path for the entity index database."""
+    return str(tmp_dir / "teredacta_entities.db")
+
+
+@pytest.fixture
+def entity_index(mock_db, entity_db_path):
+    """Build an entity index seeded with recovery data in mock_db."""
+    conn = sqlite3.connect(str(mock_db))
+    # Seed recovery data — use INSERT OR IGNORE to avoid conflicts with
+    # existing mock data that other fixtures may have inserted.
+    segments_1 = json.dumps([
+        {"text": "Jeffrey Epstein traveled to Palm Beach with FBI escort."},
+        {"text": "Contact: jeff@island.com or call 212-555-0100"},
+    ])
+    segments_2 = json.dumps([
+        {"text": "Ghislaine Maxwell met with Goldman Sachs representatives in Manhattan."},
+    ])
+    segments_3 = json.dumps([
+        {"text": "Jeffrey Epstein and Alan Dershowitz at Mar-a-Lago."},
+    ])
+    conn.execute("INSERT OR IGNORE INTO match_groups (group_id, merged) VALUES (100, 1)")
+    conn.execute("INSERT OR IGNORE INTO match_groups (group_id, merged) VALUES (101, 1)")
+    conn.execute("INSERT OR IGNORE INTO match_groups (group_id, merged) VALUES (102, 1)")
+    conn.execute(
+        "INSERT OR REPLACE INTO merge_results "
+        "(group_id, recovered_segments, recovered_count, created_at) "
+        "VALUES (100, ?, 2, '2020-01-01 00:00:00')",
+        (segments_1,),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO merge_results "
+        "(group_id, recovered_segments, recovered_count, created_at) "
+        "VALUES (101, ?, 1, '2020-01-01 00:00:00')",
+        (segments_2,),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO merge_results "
+        "(group_id, recovered_segments, recovered_count, created_at) "
+        "VALUES (102, ?, 1, '2020-01-01 00:00:00')",
+        (segments_3,),
+    )
+    conn.commit()
+    conn.close()
+
+    idx = EntityIndex(entity_db_path)
+    idx.build(str(mock_db))
+    return idx
+
+
+@pytest.fixture
+def app_with_entities(test_config, entity_index, entity_db_path):
+    """Create a FastAPI app with entity_index on app.state."""
+    test_config.entity_db_path = entity_db_path
+    from teredacta.app import create_app
+    application = create_app(test_config)
+    application.state.entity_index = entity_index
+    return application
+
+
+@pytest.fixture
+def client_with_entities(app_with_entities):
+    """TestClient with entity index available."""
+    return TestClient(app_with_entities)
