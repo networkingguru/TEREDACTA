@@ -39,10 +39,13 @@ def create_app(config: TeredactaConfig) -> FastAPI:
         response = await call_next(request)
         return response
 
-    from teredacta.routers import dashboard, documents, groups, recoveries, pdf, queue, summary, admin, explore, highlights
+    from teredacta.routers import dashboard, documents, groups, recoveries, pdf, queue, summary, admin, explore, highlights, api
 
     # SSE at root (all users need daemon status in nav)
     app.include_router(dashboard.sse_router)
+
+    # API endpoints (HTML fragments)
+    app.include_router(api.router, prefix="/api")
 
     # Public pages
     app.include_router(explore.router)

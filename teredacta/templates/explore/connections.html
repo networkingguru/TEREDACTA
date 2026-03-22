@@ -1,0 +1,32 @@
+<div class="connections-header">
+    <h3 style="margin-bottom:0.25rem;">{{ entity.name }}</h3>
+    <span class="entity-type-badge">{{ entity.type }}</span>
+    <span style="color:var(--text-secondary);font-size:0.8rem;margin-left:0.5rem;" title="Total mentions across all recovery groups">{{ entity.mention_count }} mention(s)</span>
+</div>
+
+<div class="explore-legend">
+    <span class="recovery">Recoveries</span>
+    <span class="entity">Entities</span>
+    <span class="document">Documents</span>
+</div>
+
+<div class="connections-list">
+{% for rec in recoveries %}
+<div class="connection-item" data-type="recovery" data-id="{{ rec.group_id }}" title="Recovery group {{ rec.group_id }}">
+    <span style="color:#66bb6a;font-size:0.8rem;">Recovery #{{ rec.group_id }}</span>
+    <p style="font-size:0.75rem;color:var(--text-secondary);margin-top:2px;">{{ rec.context[:120] }}{% if rec.context|length > 120 %}…{% endif %}</p>
+</div>
+{% endfor %}
+
+{% for linked in linked_entities %}
+<div class="connection-item" data-type="entity" data-id="{{ linked.id }}" title="{{ linked.name }} — co-occurs {{ linked.co_occurrence_count }} time(s)">
+    <span style="color:#ff9800;font-size:0.8rem;">{{ linked.name }}</span>
+    <span class="entity-type-badge" style="margin-left:0.25rem;">{{ linked.type }}</span>
+    <span style="color:var(--text-secondary);font-size:0.7rem;margin-left:auto;" title="Co-occurrence count">{{ linked.co_occurrence_count }}×</span>
+</div>
+{% endfor %}
+</div>
+
+{% if not recoveries and not linked_entities %}
+<p style="color:var(--text-secondary);padding:0.5rem;font-size:0.85rem;">No connections found.</p>
+{% endif %}

@@ -1,0 +1,17 @@
+{% if entities %}
+{% for ent in entities %}
+<div class="entity-item" data-entity-id="{{ ent.id }}" title="{{ ent.name }} — {{ ent.mention_count }} mention(s)">
+    <span class="entity-name">{{ ent.name }}</span>
+    <span class="entity-type-badge">{{ ent.type }}</span>
+    <span class="entity-count" title="Appears in {{ ent.mention_count }} recovery group(s)">{{ ent.mention_count }}</span>
+</div>
+{% endfor %}
+{% if page < total_pages %}
+<div class="entity-load-more" data-page="{{ page + 1 }}" style="padding:0.5rem;text-align:center;">
+    <button class="btn btn-primary" style="font-size:0.75rem;padding:0.25rem 0.75rem;"
+            onclick="loadMoreEntities({{ page + 1 }})">Load more</button>
+</div>
+{% endif %}
+{% else %}
+<p style="color:var(--text-secondary);padding:0.5rem;font-size:0.85rem;">No entities found.</p>
+{% endif %}
