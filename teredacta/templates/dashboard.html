@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — TEREDACTA{% endblock %}
-{% block nav_dashboard %}active{% endblock %}
+{% block nav_admin %}active{% endblock %}
 {% block content %}
 <h1>Dashboard</h1>
 
@@ -13,7 +13,7 @@
 </div>
 {% endif %}
 
-<div id="stats-container" hx-get="/stats-fragment" hx-trigger="load, every 30s" hx-swap="innerHTML">
+<div id="stats-container" hx-get="/admin/stats-fragment" hx-trigger="load, every 30s" hx-swap="innerHTML">
     <p style="color: var(--text-secondary);">Loading stats...</p>
 </div>
 {% endblock %}

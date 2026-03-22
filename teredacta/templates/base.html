@@ -12,12 +12,14 @@
     <nav class="top-nav">
         <div class="nav-left">
             <a href="/" class="nav-logo"><img src="/static/img/logo.png" alt="TEREDACTA" class="nav-logo-img"></a>
-            <a href="/" class="nav-link {% block nav_dashboard %}{% endblock %}">Dashboard</a>
-            <a href="/documents" class="nav-link {% block nav_documents %}{% endblock %}">Documents</a>
-            <a href="/groups" class="nav-link {% block nav_groups %}{% endblock %}">Groups</a>
+            <a href="/" class="nav-link {% block nav_explore %}{% endblock %}">Explore</a>
+            <a href="/highlights" class="nav-link {% block nav_highlights %}{% endblock %}">Highlights</a>
             <a href="/recoveries" class="nav-link {% block nav_recoveries %}{% endblock %}">Recoveries</a>
-            <a href="/queue" class="nav-link {% block nav_queue %}{% endblock %}">Queue</a>
+            <a href="/documents" class="nav-link {% block nav_documents %}{% endblock %}">Documents</a>
             <a href="/summary" class="nav-link {% block nav_summary %}{% endblock %}">Summary</a>
+            {% if is_admin %}
+            <a href="/admin" class="nav-link {% block nav_admin %}{% endblock %}" title="Pipeline administration">Admin</a>
+            {% endif %}
         </div>
         <div class="nav-right">
             <span id="daemon-status" hx-get="/sse/daemon-status" hx-trigger="load, every 5s" hx-swap="innerHTML">
