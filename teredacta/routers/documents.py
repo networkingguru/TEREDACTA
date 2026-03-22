@@ -9,20 +9,19 @@ from teredacta.unob import calc_total_pages
 router = APIRouter()
 
 
-def _entity_doc_ids(entity_index, unob, search: str) -> set[str]:
-    """Find doc_ids linked to entities matching *search*."""
+def _entity_group_ids(entity_index, search: str) -> list[int]:
+    """Find group_ids linked to entities matching *search*."""
     try:
         entities, _total = entity_index.list_entities(name_filter=search, per_page=50)
     except Exception:
-        return set()
+        return []
     if not entities:
-        return set()
+        return []
 
-    # Collect group_ids from entity mentions
     from pathlib import Path
     db_path = Path(entity_index.db_path)
     if not db_path.exists():
-        return set()
+        return []
     conn = sqlite3.connect(str(db_path), timeout=5.0)
     conn.row_factory = sqlite3.Row
     try:
@@ -32,24 +31,9 @@ def _entity_doc_ids(entity_index, unob, search: str) -> set[str]:
             f"SELECT DISTINCT group_id FROM entity_mentions WHERE entity_id IN ({placeholders})",
             entity_ids,
         ).fetchall()
-        group_ids = [r["group_id"] for r in rows]
+        return [r["group_id"] for r in rows]
     finally:
         conn.close()
-
-    if not group_ids:
-        return set()
-
-    # Get doc_ids from match_group_members in the Unobfuscator DB
-    unob_conn = unob._get_db()
-    try:
-        placeholders = ",".join("?" for _ in group_ids)
-        rows = unob_conn.execute(
-            f"SELECT DISTINCT doc_id FROM match_group_members WHERE group_id IN ({placeholders})",
-            group_ids,
-        ).fetchall()
-        return {r["doc_id"] for r in rows}
-    finally:
-        unob_conn.close()
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -65,32 +49,26 @@ def list_documents(
 ):
     templates = request.app.state.templates
     unob = request.app.state.unob
-    try:
-        docs, total = unob.get_documents(
-            page=page, per_page=per_page, search=search,
-            source=source, batch=batch, has_redactions=has_redactions, stage=stage,
-        )
-    except FileNotFoundError:
-        docs, total = [], 0
 
-    # Entity-aware search: find additional docs via entity index
-    entity_docs_added = 0
+    # Entity-aware search: find doc_ids via entity index, merge into SQL query
+    entity_doc_ids: set[str] = set()
     if search:
         entity_index = request.app.state.entity_index
         try:
-            extra_ids = _entity_doc_ids(entity_index, unob, search)
-            existing_ids = {d["id"] for d in docs}
-            new_ids = extra_ids - existing_ids
-            if new_ids:
-                # Fetch the additional documents
-                for doc_id in sorted(new_ids):
-                    doc = unob.get_document(doc_id)
-                    if doc:
-                        docs.append(doc)
-                        entity_docs_added += 1
-                total += entity_docs_added
+            group_ids = _entity_group_ids(entity_index, search)
+            if group_ids:
+                entity_doc_ids = unob.get_docs_by_group_ids(group_ids)
         except Exception:
             pass  # Entity search is best-effort
+
+    try:
+        docs, total = unob.get_documents(
+            page=page, per_page=per_page, search=search,
+            source=source, batch=batch, has_redactions=has_redactions,
+            stage=stage, extra_doc_ids=entity_doc_ids or None,
+        )
+    except FileNotFoundError:
+        docs, total = [], 0
 
     total_pages = calc_total_pages(total, per_page)
     ctx = {

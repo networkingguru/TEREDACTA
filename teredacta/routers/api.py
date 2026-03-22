@@ -17,19 +17,19 @@ def _ctx(request: Request, **kwargs) -> dict:
 
 
 @router.get("/entities", response_class=HTMLResponse)
-async def entity_list(
+def entity_list(
     request: Request,
-    type: str = Query("", alias="type"),
-    filter: str = Query("", alias="filter"),
+    entity_type: str = Query("", alias="type"),
+    name_filter: str = Query("", alias="filter"),
     page: int = Query(1, ge=1),
 ):
     templates = request.app.state.templates
     entity_index = request.app.state.entity_index
-    entity_type = type if type else None
-    name_filter = filter if filter else None
+    etype = entity_type if entity_type else None
+    nfilter = name_filter if name_filter else None
     entities, total = entity_index.list_entities(
-        entity_type=entity_type,
-        name_filter=name_filter,
+        entity_type=etype,
+        name_filter=nfilter,
         page=page,
         per_page=50,
     )
@@ -37,12 +37,12 @@ async def entity_list(
     return templates.TemplateResponse(
         "explore/entity_list.html",
         _ctx(request, entities=entities, total=total, page=page, total_pages=total_pages,
-             current_type=type, current_filter=filter),
+             current_type=entity_type, current_filter=name_filter),
     )
 
 
 @router.get("/entities/{entity_id:int}/connections", response_class=HTMLResponse)
-async def entity_connections(request: Request, entity_id: int):
+def entity_connections(request: Request, entity_id: int):
     templates = request.app.state.templates
     entity_index = request.app.state.entity_index
     connections = entity_index.get_connections(entity_id)
@@ -55,7 +55,7 @@ async def entity_connections(request: Request, entity_id: int):
 
 
 @router.get("/preview/recovery/{group_id:int}", response_class=HTMLResponse)
-async def preview_recovery(request: Request, group_id: int):
+def preview_recovery(request: Request, group_id: int):
     templates = request.app.state.templates
     unob = request.app.state.unob
     try:
@@ -79,7 +79,7 @@ async def preview_recovery(request: Request, group_id: int):
 
 
 @router.get("/preview/document/{doc_id}", response_class=HTMLResponse)
-async def preview_document(request: Request, doc_id: str):
+def preview_document(request: Request, doc_id: str):
     templates = request.app.state.templates
     unob = request.app.state.unob
     try:
@@ -98,7 +98,7 @@ async def preview_document(request: Request, doc_id: str):
 
 
 @router.get("/preview/entity/{entity_id:int}", response_class=HTMLResponse)
-async def preview_entity(request: Request, entity_id: int):
+def preview_entity(request: Request, entity_id: int):
     templates = request.app.state.templates
     entity_index = request.app.state.entity_index
     connections = entity_index.get_connections(entity_id)

@@ -18,7 +18,7 @@
 </div>
 {% elif not has_pdf %}
 {% if extracted_text %}
-<div class="log-viewer" style="max-height:calc(100% - 120px);font-size:0.8rem;">{{ extracted_text | e | replace(recovered_text | e, '<mark class="recovered-inline">' ~ (recovered_text | e) ~ '</mark>') | safe }}</div>
+<div class="log-viewer" style="max-height:calc(100% - 120px);font-size:0.8rem;">{{ highlighted_text | safe }}</div>
 {% else %}
 <p style="color:var(--text-secondary);">Source document text not available.</p>
 {% endif %}

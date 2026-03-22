@@ -5,6 +5,7 @@
     var currentFilter = '';
     var currentPage = 1;
     var debounceTimer = null;
+    var errMsg = '<p style="color:#ef5350;padding:1rem;">Failed to load. Please try again.</p>';
 
     // --- Entity list ---
 
@@ -15,10 +16,14 @@
         if (currentFilter) params.set('filter', currentFilter);
         params.set('page', currentPage);
 
+        var panel = document.getElementById('entity-list');
         fetch('/api/entities?' + params.toString())
-            .then(function(r) { return r.text(); })
+            .then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); })
             .then(function(html) {
-                document.getElementById('entity-list').innerHTML = html;
+                panel.innerHTML = html;
+            })
+            .catch(function() {
+                panel.innerHTML = errMsg;
             });
     }
 
@@ -72,13 +77,17 @@
         item.classList.add('active');
 
         // Fetch connections
+        var panel = document.getElementById('connections-content');
         fetch('/api/entities/' + entityId + '/connections')
-            .then(function(r) { return r.text(); })
+            .then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); })
             .then(function(html) {
-                document.getElementById('connections-content').innerHTML = html;
+                panel.innerHTML = html;
                 // Clear preview
                 document.getElementById('preview-content').innerHTML =
                     '<p style="color:var(--text-secondary);padding:1rem;">Select a connection to preview.</p>';
+            })
+            .catch(function() {
+                panel.innerHTML = errMsg;
             });
 
         // Update URL
@@ -96,10 +105,11 @@
 
         if (type === 'entity') {
             // Slide to new entity: fetch its connections
+            var panel = document.getElementById('connections-content');
             fetch('/api/entities/' + id + '/connections')
-                .then(function(r) { return r.text(); })
+                .then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); })
                 .then(function(html) {
-                    document.getElementById('connections-content').innerHTML = html;
+                    panel.innerHTML = html;
                     document.getElementById('preview-content').innerHTML =
                         '<p style="color:var(--text-secondary);padding:1rem;">Select a connection to preview.</p>';
                     // Highlight in entity list if visible
@@ -107,14 +117,21 @@
                         el.classList.toggle('active', el.getAttribute('data-entity-id') === id);
                     });
                     history.pushState({ entityId: id }, '', '/?entity=' + id);
+                })
+                .catch(function() {
+                    panel.innerHTML = errMsg;
                 });
         } else {
             // Recovery or document → preview in right column
             var url = '/api/preview/' + type + '/' + id;
+            var previewPanel = document.getElementById('preview-content');
             fetch(url)
-                .then(function(r) { return r.text(); })
+                .then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); })
                 .then(function(html) {
-                    document.getElementById('preview-content').innerHTML = html;
+                    previewPanel.innerHTML = html;
+                })
+                .catch(function() {
+                    previewPanel.innerHTML = errMsg;
                 });
         }
     });
@@ -123,10 +140,14 @@
 
     window.addEventListener('popstate', function(e) {
         if (e.state && e.state.entityId) {
+            var panel = document.getElementById('connections-content');
             fetch('/api/entities/' + e.state.entityId + '/connections')
-                .then(function(r) { return r.text(); })
+                .then(function(r) { if (!r.ok) throw new Error(r.status); return r.text(); })
                 .then(function(html) {
-                    document.getElementById('connections-content').innerHTML = html;
+                    panel.innerHTML = html;
+                })
+                .catch(function() {
+                    panel.innerHTML = errMsg;
                 });
         } else {
             document.getElementById('connections-content').innerHTML =
@@ -141,16 +162,20 @@
     var params = new URLSearchParams(window.location.search);
     var initialEntity = params.get('entity');
     if (initialEntity) {
+        var panel = document.getElementById('connections-content');
         fetch('/api/entities/' + initialEntity + '/connections')
             .then(function(r) {
-                if (r.ok) return r.text();
-                return null;
+                if (!r.ok) throw new Error(r.status);
+                return r.text();
             })
             .then(function(html) {
                 if (html) {
-                    document.getElementById('connections-content').innerHTML = html;
+                    panel.innerHTML = html;
                     history.replaceState({ entityId: initialEntity }, '', '/?entity=' + initialEntity);
                 }
+            })
+            .catch(function() {
+                panel.innerHTML = errMsg;
             });
     }
 })();

@@ -24,7 +24,7 @@ def _get_headline(segments_json: str) -> str:
 
 
 @router.get("/", response_class=HTMLResponse)
-async def highlights_page(request: Request):
+def highlights_page(request: Request):
     templates = request.app.state.templates
     unob = request.app.state.unob
     entity_index = request.app.state.entity_index
@@ -51,20 +51,10 @@ async def highlights_page(request: Request):
     except FileNotFoundError:
         pass
 
-    # Top entities from entity index
+    # Top entities from entity index (single query with samples)
     top_entities = []
     try:
-        entities, _ = entity_index.list_entities(per_page=20)
-        for ent in entities:
-            # Get sample context
-            sample = ""
-            connections = entity_index.get_connections(ent["id"])
-            if connections and connections["recoveries"]:
-                sample = connections["recoveries"][0]["context"][:150]
-            top_entities.append({
-                **ent,
-                "sample": sample,
-            })
+        top_entities = entity_index.get_entities_with_samples(limit=20)
     except Exception:
         pass
 

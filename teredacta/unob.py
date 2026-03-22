@@ -208,6 +208,7 @@ class UnobInterface:
         batch: Optional[str] = None,
         has_redactions: Optional[bool] = None,
         stage: Optional[str] = None,
+        extra_doc_ids: Optional[set[str]] = None,
     ) -> tuple[list[dict], int]:
         conn = self._get_db()
         try:
@@ -217,6 +218,8 @@ class UnobInterface:
 
             # Search uses GLOB for substring matching on original_filename
             # and id. UNION merges results across case variants.
+            # If extra_doc_ids provided (from entity search), include them
+            # via an OR clause so pagination is respected.
             if search:
                 # Escape GLOB metacharacters before building patterns
                 safe_search = re.sub(r'([\[\]*?])', r'[\1]', search)
@@ -228,11 +231,16 @@ class UnobInterface:
                 ]))
                 # UNION across both columns with each unique pattern
                 parts = []
-                params_search = []
+                params_search: list = []
                 for col in ("original_filename", "id"):
                     for pat in patterns:
                         parts.append(f"SELECT {cols} FROM documents WHERE {col} GLOB ?")
                         params_search.append(pat)
+                # Include entity-linked doc_ids in the same query
+                if extra_doc_ids:
+                    placeholders = ",".join("?" for _ in extra_doc_ids)
+                    parts.append(f"SELECT {cols} FROM documents WHERE id IN ({placeholders})")
+                    params_search.extend(sorted(extra_doc_ids))
                 query = " UNION ".join(parts) + " ORDER BY id LIMIT ? OFFSET ?"
                 rows = conn.execute(
                     query, params_search + [per_page + 1, offset]
@@ -314,6 +322,22 @@ class UnobInterface:
                 doc["similarity"] = group_row["similarity"]
 
             return doc
+        finally:
+            conn.close()
+
+    def get_docs_by_group_ids(self, group_ids: list[int], limit: int = 200) -> set[str]:
+        """Return doc_ids for the given match group IDs."""
+        if not group_ids:
+            return set()
+        conn = self._get_db()
+        try:
+            placeholders = ",".join("?" for _ in group_ids)
+            rows = conn.execute(
+                f"SELECT DISTINCT doc_id FROM match_group_members "
+                f"WHERE group_id IN ({placeholders}) LIMIT ?",
+                list(group_ids) + [limit],
+            ).fetchall()
+            return {r["doc_id"] for r in rows}
         finally:
             conn.close()
 
@@ -594,6 +618,18 @@ class UnobInterface:
                         pdf_cached = True
                         pdf_cache_path = f"{doc_row['release_batch']}/{doc_row['original_filename']}"
 
+            # Build pre-escaped highlighted HTML for safe template rendering (C1)
+            highlighted_text = ""
+            if extracted_text and recovered_text:
+                safe_full = html.escape(extracted_text)
+                safe_recovered = html.escape(recovered_text)
+                highlighted_text = safe_full.replace(
+                    safe_recovered,
+                    '<mark class="recovered-inline">' + safe_recovered + '</mark>',
+                )
+            elif extracted_text:
+                highlighted_text = html.escape(extracted_text)
+
             return {
                 "source_doc_id": source_doc_id,
                 "recovered_text": recovered_text,
@@ -602,6 +638,7 @@ class UnobInterface:
                 "pdf_cached": pdf_cached,
                 "pdf_cache_path": pdf_cache_path,
                 "extracted_text": extracted_text,
+                "highlighted_text": highlighted_text,
             }
         finally:
             conn.close()

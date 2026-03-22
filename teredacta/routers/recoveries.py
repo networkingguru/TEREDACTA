@@ -80,11 +80,6 @@ def source_panel(request: Request, group_id: int, segment_index: int = Query(...
 
 @router.get("/{group_id:int}/tab/{tab_name}", response_class=HTMLResponse)
 def recovery_tab(request: Request, group_id: int, tab_name: str):
-    templates = request.app.state.templates
-    unob = request.app.state.unob
-    detail = unob.get_recovery_detail(group_id)
-    if detail is None:
-        return Response(status_code=404)
     tab_map = {
         "merged-text": "recoveries/tabs/merged_text.html",
         "output-pdf": "recoveries/tabs/output_pdf.html",
@@ -93,6 +88,11 @@ def recovery_tab(request: Request, group_id: int, tab_name: str):
     }
     template = tab_map.get(tab_name)
     if not template:
+        return Response(status_code=404)
+    templates = request.app.state.templates
+    unob = request.app.state.unob
+    detail = unob.get_recovery_detail(group_id)
+    if detail is None:
         return Response(status_code=404)
     return templates.TemplateResponse(template, {
         "request": request, "recovery": detail, "group_id": group_id,

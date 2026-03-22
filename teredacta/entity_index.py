@@ -63,9 +63,10 @@ _RE_EMAIL = re.compile(
     r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b"
 )
 
-# US phone numbers
+# US phone numbers — require separators to avoid false positives on long numbers
 _RE_PHONE = re.compile(
-    r"(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b"
+    r"(?:\+?1[\s.-])?\(\d{3}\)[\s.-]\d{3}[\s.-]\d{4}\b"
+    r"|\b\d{3}[\s.-]\d{3}[\s.-]\d{4}\b"
 )
 
 
@@ -212,19 +213,22 @@ class EntityIndex:
     def build(self, unob_db_path: str) -> dict:
         """Read recovered_segments from the Unobfuscator DB and populate
         the entity index.  Returns summary stats."""
-        # Read from Unobfuscator (read-only)
+        # Read from Unobfuscator (read-only) — use cursor iterator to avoid
+        # loading all rows into memory at once (S2)
         src = sqlite3.connect(unob_db_path, timeout=10.0)
         src.row_factory = sqlite3.Row
         src.execute("PRAGMA query_only = ON")
-        rows = src.execute(
+        src_cursor = src.execute(
             "SELECT group_id, recovered_segments FROM merge_results "
             "WHERE recovered_count > 0 AND recovered_segments IS NOT NULL"
-        ).fetchall()
-        src.close()
+        )
 
         # Open/create entity DB
         conn = self._get_db()
         self._ensure_schema(conn)
+
+        # Wrap delete+rebuild in explicit transaction
+        conn.execute("BEGIN IMMEDIATE")
 
         # Clear previous data
         conn.execute("DELETE FROM entity_links")
@@ -254,7 +258,7 @@ class EntityIndex:
 
         total_mentions = 0
 
-        for row in rows:
+        for row in src_cursor:
             group_id = row["group_id"]
             try:
                 segments = json.loads(row["recovered_segments"])
@@ -294,6 +298,8 @@ class EntityIndex:
                         "DO UPDATE SET co_occurrence_count = co_occurrence_count + 1",
                         (a, b),
                     )
+
+        src.close()
 
         # Update mention counts
         conn.execute(
@@ -414,6 +420,33 @@ class EntityIndex:
             ).fetchall()
 
             return [dict(r) for r in rows], total
+        finally:
+            conn.close()
+
+    def get_entities_with_samples(self, limit: int = 20) -> list[dict]:
+        """Fetch top entities with one sample snippet each in a single query."""
+        db = Path(self.db_path)
+        if not db.exists():
+            return []
+
+        conn = self._get_db(readonly=True)
+        try:
+            rows = conn.execute(
+                "SELECT e.id, e.name, e.type, e.mention_count, "
+                "(SELECT em.context FROM entity_mentions em "
+                " WHERE em.entity_id = e.id LIMIT 1) AS sample "
+                "FROM entities e "
+                "ORDER BY e.mention_count DESC, e.name "
+                "LIMIT ?",
+                (limit,),
+            ).fetchall()
+            results = []
+            for r in rows:
+                d = dict(r)
+                sample = d.pop("sample", None) or ""
+                d["sample"] = sample[:150]
+                results.append(d)
+            return results
         finally:
             conn.close()
 

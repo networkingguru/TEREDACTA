@@ -5,7 +5,7 @@ router = APIRouter()
 
 
 @router.get("/", response_class=HTMLResponse)
-async def explore_page(request: Request):
+def explore_page(request: Request):
     templates = request.app.state.templates
     entity_index = request.app.state.entity_index
     config = request.app.state.config
