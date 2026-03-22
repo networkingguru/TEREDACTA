@@ -12,17 +12,19 @@ def list_recoveries(
     search: str = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=100),
+    sort: str = Query(None),
 ):
     templates = request.app.state.templates
     unob = request.app.state.unob
     try:
-        recoveries, total = unob.get_recoveries(search=search, page=page, per_page=per_page)
+        recoveries, total = unob.get_recoveries(search=search, page=page, per_page=per_page, sort=sort)
     except FileNotFoundError:
         recoveries, total = [], 0
     total_pages = calc_total_pages(total, per_page)
     ctx = {
         "request": request, "recoveries": recoveries,
         "search": search or "",
+        "sort": sort or "",
         "total": total,
         "page": page,
         "per_page": per_page,

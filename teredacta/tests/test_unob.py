@@ -3,7 +3,7 @@ import sqlite3
 
 import pytest
 
-from teredacta.unob import UnobInterface
+from teredacta.unob import UnobInterface, parse_boolean_search
 
 
 @pytest.fixture
@@ -222,6 +222,70 @@ class TestUnobDBReads:
         docs, total = unob.get_documents(page=1, per_page=10, stage="pdf_processed")
         # doc-002 has pdf_processed=1
         assert total == 1
+
+
+class TestBooleanSearch:
+    def test_single_term(self):
+        result = parse_boolean_search("maxwell")
+        assert result == [("maxwell", "AND")]
+
+    def test_and_operator(self):
+        result = parse_boolean_search("maxwell AND epstein")
+        assert result == [("maxwell", "AND"), ("epstein", "AND")]
+
+    def test_or_operator(self):
+        result = parse_boolean_search("maxwell OR epstein")
+        assert result == [("maxwell", "AND"), ("epstein", "OR")]
+
+    def test_quoted_phrase(self):
+        result = parse_boolean_search('"palm beach" AND maxwell')
+        assert result == [("palm beach", "AND"), ("maxwell", "AND")]
+
+    def test_empty_query(self):
+        assert parse_boolean_search("") == []
+        assert parse_boolean_search("   ") == []
+
+    def test_implicit_and(self):
+        # Adjacent terms without explicit operator default to AND
+        result = parse_boolean_search("maxwell epstein")
+        assert result == [("maxwell", "AND"), ("epstein", "AND")]
+
+    def test_mixed_operators(self):
+        result = parse_boolean_search("maxwell AND epstein OR clinton")
+        assert result == [("maxwell", "AND"), ("epstein", "AND"), ("clinton", "OR")]
+
+    def test_case_insensitive_operators(self):
+        result = parse_boolean_search("maxwell and epstein or clinton")
+        assert result == [("maxwell", "AND"), ("epstein", "AND"), ("clinton", "OR")]
+
+    def test_get_recoveries_boolean_and(self, test_config, populated_db):
+        """AND search should only return results matching both terms."""
+        test_config.db_path = str(populated_db)
+        unob = UnobInterface(test_config)
+        results, total = unob.get_recoveries(search="Maxwell AND townhouse")
+        assert len(results) == 1  # both terms in the same recovery
+        results2, total2 = unob.get_recoveries(search="Maxwell AND nonexistent")
+        assert len(results2) == 0
+
+    def test_get_recoveries_boolean_or(self, test_config, populated_db):
+        """OR search should return results matching either term."""
+        test_config.db_path = str(populated_db)
+        unob = UnobInterface(test_config)
+        results, total = unob.get_recoveries(search="Maxwell OR nonexistent")
+        assert len(results) == 1
+
+    def test_get_recoveries_single_term_backward_compat(self, test_config, populated_db):
+        """Single term search should still work as before."""
+        test_config.db_path = str(populated_db)
+        unob = UnobInterface(test_config)
+        results, total = unob.get_recoveries(search="Maxwell")
+        assert len(results) == 1
+
+    def test_get_recoveries_sort_by_date(self, test_config, populated_db):
+        test_config.db_path = str(populated_db)
+        unob = UnobInterface(test_config)
+        results, total = unob.get_recoveries(sort="date")
+        assert len(results) == 1  # just verify it doesn't crash
 
 
 class TestUnobSubprocess:

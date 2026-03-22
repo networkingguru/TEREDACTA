@@ -29,6 +29,58 @@ _TABLE_RE = re.compile(
 )
 
 
+def parse_boolean_search(query: str) -> list[tuple[str, str]]:
+    """Parse a search query with AND/OR operators and quoted phrases.
+
+    Returns list of (term, operator) tuples.  The operator indicates how
+    this term connects to the *previous* term.  The first term always
+    has operator "AND".
+
+    Examples:
+        "maxwell"             -> [("maxwell", "AND")]
+        "maxwell AND epstein" -> [("maxwell", "AND"), ("epstein", "AND")]
+        "maxwell OR epstein"  -> [("maxwell", "AND"), ("epstein", "OR")]
+        '"palm beach" AND maxwell' -> [("palm beach", "AND"), ("maxwell", "AND")]
+    """
+    if not query or not query.strip():
+        return []
+
+    tokens: list[str] = []
+    i = 0
+    q = query.strip()
+    while i < len(q):
+        if q[i] == '"':
+            # Quoted phrase
+            end = q.find('"', i + 1)
+            if end == -1:
+                end = len(q)
+            tokens.append(q[i + 1:end])
+            i = end + 1
+        elif q[i] == ' ':
+            i += 1
+        else:
+            end = i
+            while end < len(q) and q[end] != ' ' and q[end] != '"':
+                end += 1
+            tokens.append(q[i:end])
+            i = end
+
+    # Build (term, operator) pairs
+    result: list[tuple[str, str]] = []
+    pending_op = "AND"
+    for tok in tokens:
+        upper = tok.upper()
+        if upper == "AND":
+            pending_op = "AND"
+        elif upper == "OR":
+            pending_op = "OR"
+        else:
+            result.append((tok, pending_op))
+            pending_op = "AND"  # default between adjacent terms
+
+    return result
+
+
 def calc_total_pages(total: int, per_page: int) -> int:
     return max(1, (total + per_page - 1) // per_page)
 
@@ -333,22 +385,33 @@ class UnobInterface:
         search: Optional[str] = None,
         page: int = 1,
         per_page: int = 50,
+        sort: Optional[str] = None,
     ) -> tuple[list[dict], int]:
         conn = self._get_db()
         try:
             where = "mr.recovered_count > 0"
-            params = []
+            params: list = []
             if search:
-                # recovered_segments is a JSON column. The LIKE search operates on
-                # the raw JSON text, where characters like " are stored as \".
-                # Convert the search term to its JSON-encoded form (minus outer quotes)
-                # so that searching for: "jeffrey E." <foo@bar.com>
-                # becomes: \"jeffrey E.\" <foo@bar.com>  in the LIKE pattern.
-                # Use '!' as the ESCAPE character since '\' is used by JSON encoding.
-                json_escaped = json.dumps(search)[1:-1]  # strip outer quotes
-                escaped = json_escaped.replace("!", "!!").replace("%", "!%").replace("_", "!_")
-                where += " AND mr.recovered_segments LIKE ? ESCAPE '!'"
-                params.append(f"%{escaped}%")
+                terms = parse_boolean_search(search)
+                if terms:
+                    clauses = []
+                    for term_text, _op in terms:
+                        json_escaped = json.dumps(term_text)[1:-1]
+                        escaped = json_escaped.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+                        clauses.append("mr.recovered_segments LIKE ? ESCAPE '!'")
+                        params.append(f"%{escaped}%")
+
+                    # Build boolean expression
+                    combined = clauses[0]
+                    for i in range(1, len(clauses)):
+                        op = terms[i][1]  # AND or OR
+                        combined = f"({combined} {op} {clauses[i]})"
+                    where += f" AND ({combined})"
+
+            # Determine sort order
+            order_by = "mr.recovered_count DESC"
+            if sort == "date":
+                order_by = "mr.created_at DESC"
 
             total = conn.execute(
                 f"SELECT COUNT(*) FROM merge_results mr WHERE {where}",
@@ -360,7 +423,7 @@ class UnobInterface:
                 f"mr.soft_recovered_count, mr.source_doc_ids, mr.output_generated, "
                 f"mr.created_at "
                 f"FROM merge_results mr WHERE {where} "
-                f"ORDER BY mr.recovered_count DESC "
+                f"ORDER BY {order_by} "
                 f"LIMIT ? OFFSET ?",
                 params + [per_page, (page - 1) * per_page],
             ).fetchall()

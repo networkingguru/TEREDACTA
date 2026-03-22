@@ -7,8 +7,15 @@
 <div class="search-bar">
     <input type="text" class="search-input" name="search" value="{{ search }}"
            placeholder="Search recovered text..."
-           hx-get="/recoveries/" hx-target="#recovery-table" hx-trigger="keyup changed delay:300ms" hx-include="this">
+           hx-get="/recoveries/" hx-target="#recovery-table" hx-trigger="keyup changed delay:300ms"
+           hx-include="[name='sort']">
+    <select name="sort" class="filter-select" hx-get="/recoveries/" hx-target="#recovery-table" hx-trigger="change"
+            hx-include="[name='search']">
+        <option value="">Sort by count</option>
+        <option value="date" {% if sort == 'date' %}selected{% endif %}>Sort by date</option>
+    </select>
 </div>
+<p class="search-hint">Search recovered text — use AND, OR, quotes for exact phrases</p>
 
 <div id="recovery-table">
 {% include "recoveries/table.html" %}
