@@ -23,6 +23,7 @@
         <option value="unprocessed" {% if stage == 'unprocessed' %}selected{% endif %}>Unprocessed</option>
     </select>
 </div>
+<p class="search-hint">Search by filename, document ID, or entity name</p>
 
 {% if docs|length < 3 and search %}
 <p style="color: var(--text-secondary); margin-bottom: 1rem;">Few results? <a href="/recoveries?search={{ search | urlencode }}" style="color: var(--accent-blue);">Search in recoveries instead</a></p>

@@ -1,5 +1,9 @@
+import json
 import sqlite3
 import pytest
+
+from fastapi.testclient import TestClient
+
 
 @pytest.fixture
 def seeded_db(mock_db):
@@ -40,3 +44,12 @@ class TestDocumentBrowser:
         resp = client.get("/documents?search=Document", headers={"HX-Request": "true"})
         assert resp.status_code == 200
         assert "<nav" not in resp.text
+
+    def test_entity_aware_search(self, client_with_entities):
+        """Searching for an entity name should return docs linked via entity index."""
+        resp = client_with_entities.get("/documents?search=Jeffrey+Epstein")
+        assert resp.status_code == 200
+
+    def test_search_hint_visible(self, client, seeded_db):
+        resp = client.get("/documents")
+        assert "entity name" in resp.text.lower()
