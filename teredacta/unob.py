@@ -625,7 +625,7 @@ class UnobInterface:
                 safe_recovered = html.escape(recovered_text)
                 highlighted_text = safe_full.replace(
                     safe_recovered,
-                    '<mark class="recovered-inline">' + safe_recovered + '</mark>',
+                    '<mark class="recovered-inline" id="source-match">' + safe_recovered + '</mark>',
                 )
             elif extracted_text:
                 highlighted_text = html.escape(extracted_text)
