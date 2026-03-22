@@ -102,3 +102,43 @@ class TestExplorePage:
     def test_explore_page_with_entities(self, client_with_entities):
         resp = client_with_entities.get("/")
         assert resp.status_code == 200
+
+    def test_explore_page_no_index_shows_message(self, client):
+        """Without entity index built, page shows 'not been built' message."""
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert "not been built" in resp.text
+
+
+class TestExplorePageStructure:
+    """Verify three-column layout renders with entity index."""
+
+    def test_three_columns_present(self, client_with_entities):
+        resp = client_with_entities.get("/")
+        assert resp.status_code == 200
+        assert "explore-container" in resp.text
+        assert "entity-list-col" in resp.text
+        assert "connections-col" in resp.text
+        assert "preview-col" in resp.text
+
+    def test_type_tabs_present(self, client_with_entities):
+        resp = client_with_entities.get("/")
+        assert resp.status_code == 200
+        assert "entity-type-tabs" in resp.text
+        assert 'data-type="person"' in resp.text
+        assert 'data-type="org"' in resp.text
+
+    def test_filter_input_present(self, client_with_entities):
+        resp = client_with_entities.get("/")
+        assert resp.status_code == 200
+        assert "entity-filter" in resp.text
+
+    def test_explore_js_loaded(self, client_with_entities):
+        resp = client_with_entities.get("/")
+        assert resp.status_code == 200
+        assert "explore.js" in resp.text
+
+    def test_htmx_entity_list_trigger(self, client_with_entities):
+        resp = client_with_entities.get("/")
+        assert resp.status_code == 200
+        assert 'hx-get="/api/entities"' in resp.text

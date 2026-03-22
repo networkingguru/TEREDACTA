@@ -2,6 +2,48 @@
 {% block title %}Explore — TEREDACTA{% endblock %}
 {% block nav_explore %}active{% endblock %}
 {% block content %}
+<!-- Stale banner if needed -->
+{% if entity_index_stale %}
+<div style="background:#fff3e0;color:#e65100;padding:0.5rem 1rem;text-align:center;font-size:0.85rem;">
+    Entity index may be out of date — last built {{ entity_index_built_at }}.
+    {% if is_admin %}<a href="/admin">Rebuild from admin panel.</a>{% endif %}
+</div>
+{% endif %}
+
+{% if entity_index_ready %}
+<div class="explore-container">
+    <div class="explore-col explore-entities" id="entity-list-col">
+        <div class="explore-col-header">
+            <h3>Entities</h3>
+            <input type="text" class="search-input" id="entity-filter" placeholder="Filter by name..." style="margin:0.5rem 0;">
+            <p class="search-hint">Filter by name</p>
+            <div class="entity-type-tabs" id="entity-type-tabs">
+                <button class="tab active" data-type="">All</button>
+                <button class="tab" data-type="person">People</button>
+                <button class="tab" data-type="org">Orgs</button>
+                <button class="tab" data-type="location">Places</button>
+                <button class="tab" data-type="email">Emails</button>
+                <button class="tab" data-type="phone">Phones</button>
+            </div>
+        </div>
+        <div id="entity-list" hx-get="/api/entities" hx-trigger="load" hx-swap="innerHTML">
+            Loading...
+        </div>
+    </div>
+    <div class="explore-col explore-connections" id="connections-col">
+        <div id="connections-content">
+            <p style="color:var(--text-secondary);padding:1rem;">Select an entity to see connections.</p>
+        </div>
+    </div>
+    <div class="explore-col explore-preview" id="preview-col">
+        <div id="preview-content">
+            <p style="color:var(--text-secondary);padding:1rem;">Select a connection to preview.</p>
+        </div>
+    </div>
+</div>
+<script src="/static/js/explore.js"></script>
+{% else %}
 <h1>Explore</h1>
-<p style="color: var(--text-secondary);">Entity index has not been built yet.</p>
+<p style="color:var(--text-secondary);">Entity index has not been built yet. {% if is_admin %}<a href="/admin">Build it from the admin panel.</a>{% else %}Ask your administrator to build the entity index.{% endif %}</p>
+{% endif %}
 {% endblock %}
