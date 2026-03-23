@@ -10,8 +10,8 @@ def pdf_viewer(request: Request, type: str = Query(...), path: str = Query(...))
     if type not in ("cache", "output", "summary"):
         return Response(status_code=400)
     templates = request.app.state.templates
-    return templates.TemplateResponse("pdf/viewer.html", {
-        "request": request, "pdf_type": type, "pdf_path": path,
+    return templates.TemplateResponse(request, "pdf/viewer.html", {
+        "pdf_type": type, "pdf_path": path,
         "is_admin": getattr(request.state, "is_admin", False),
         "csrf_token": getattr(request.state, "csrf_token", ""),
     })
@@ -21,8 +21,8 @@ def pdf_embed(request: Request, type: str = Query(...), path: str = Query(...)):
     if type not in ("cache", "output", "summary"):
         return Response(status_code=400)
     templates = request.app.state.templates
-    return templates.TemplateResponse("pdf/embed.html", {
-        "request": request, "pdf_url": f"/pdf/{type}/{path}",
+    return templates.TemplateResponse(request, "pdf/embed.html", {
+        "pdf_url": f"/pdf/{type}/{path}",
     })
 
 @router.get("/{pdf_type}/{path:path}")

@@ -28,7 +28,6 @@ def _validate_csrf(request: Request) -> bool:
 
 def _ctx(request: Request, **extra):
     return {
-        "request": request,
         "is_admin": getattr(request.state, "is_admin", False),
         "csrf_token": getattr(request.state, "csrf_token", ""),
         **extra,
@@ -49,10 +48,10 @@ def admin_page(request: Request):
     config = request.app.state.config
     is_admin = getattr(request.state, "is_admin", False)
     if config.admin_requires_login and not is_admin:
-        return templates.TemplateResponse("admin/login.html", _ctx(request, error=None))
+        return templates.TemplateResponse(request, "admin/login.html", _ctx(request, error=None))
     if not config.admin_enabled:
-        return templates.TemplateResponse("error.html", _ctx(request, error="Admin features are disabled. Set an admin password to enable."), status_code=403)
-    return templates.TemplateResponse("admin/dashboard.html", _ctx(request))
+        return templates.TemplateResponse(request, "error.html", _ctx(request, error="Admin features are disabled. Set an admin password to enable."), status_code=403)
+    return templates.TemplateResponse(request, "admin/dashboard.html", _ctx(request))
 
 @router.get("/stats-fragment", response_class=HTMLResponse)
 async def stats_fragment(request: Request):
@@ -65,8 +64,8 @@ async def stats_fragment(request: Request):
         stats = await loop.run_in_executor(None, unob.get_stats)
     except FileNotFoundError:
         stats = {}
-    return templates.TemplateResponse("dashboard_stats.html", {
-        "request": request, "stats": stats,
+    return templates.TemplateResponse(request, "dashboard_stats.html", {
+        "stats": stats,
     })
 
 @router.post("/login")
@@ -80,7 +79,7 @@ async def login(request: Request):
         auth.create_session(response)
         return response
     templates = request.app.state.templates
-    return templates.TemplateResponse("admin/login.html", _ctx(request, error="Invalid password"), status_code=401)
+    return templates.TemplateResponse(request, "admin/login.html", _ctx(request, error="Invalid password"), status_code=401)
 
 @router.post("/logout")
 async def logout(request: Request):
@@ -141,7 +140,7 @@ def config_page(request: Request):
         return Response(status_code=403)
     templates = request.app.state.templates
     config = request.app.state.config
-    return templates.TemplateResponse("admin/config.html", _ctx(request, config=config))
+    return templates.TemplateResponse(request, "admin/config.html", _ctx(request, config=config))
 
 @router.post("/config")
 async def save_config(request: Request):
@@ -173,7 +172,7 @@ def logs_page(request: Request):
     templates = request.app.state.templates
     unob = request.app.state.unob
     lines = unob.read_log_lines(n=100)
-    return templates.TemplateResponse("admin/logs.html", _ctx(request, lines=lines))
+    return templates.TemplateResponse(request, "admin/logs.html", _ctx(request, lines=lines))
 
 @router.get("/logs/tail", response_class=HTMLResponse)
 def logs_tail(request: Request, level: str = Query(None), n: int = Query(100, ge=1, le=10000)):
@@ -192,7 +191,7 @@ def search_page(request: Request):
     if not _require_admin(request):
         return Response(status_code=403)
     templates = request.app.state.templates
-    return templates.TemplateResponse("admin/search.html", _ctx(request, result=None))
+    return templates.TemplateResponse(request, "admin/search.html", _ctx(request, result=None))
 
 @router.post("/search")
 async def search_submit(request: Request):
@@ -221,7 +220,7 @@ async def search_submit(request: Request):
         status = "Success" if result["success"] else "Failed"
         output = result.get("stdout", "") or result.get("error", "")
         return HTMLResponse(f"<div><strong>{status}</strong><pre>{escape(output)}</pre></div>")
-    return templates.TemplateResponse("admin/search.html", _ctx(request, result=result))
+    return templates.TemplateResponse(request, "admin/search.html", _ctx(request, result=result))
 
 # --- Downloads ---
 
@@ -232,7 +231,7 @@ def downloads_page(request: Request):
     templates = request.app.state.templates
     unob = request.app.state.unob
     disk = _get_disk_space(unob)
-    return templates.TemplateResponse("admin/downloads.html", _ctx(request, disk=disk))
+    return templates.TemplateResponse(request, "admin/downloads.html", _ctx(request, disk=disk))
 
 @router.post("/downloads/start")
 async def start_download(request: Request):

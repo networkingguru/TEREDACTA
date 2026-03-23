@@ -15,8 +15,7 @@ def explore_page(request: Request):
     entity_index_stale = status["state"] == "stale"
     entity_index_built_at = status.get("built_at", "")
 
-    return templates.TemplateResponse("explore.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "explore.html", {
         "is_admin": getattr(request.state, "is_admin", False),
         "csrf_token": getattr(request.state, "csrf_token", ""),
         "entity_index_ready": entity_index_ready,

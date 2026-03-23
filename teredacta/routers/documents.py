@@ -72,7 +72,7 @@ def list_documents(
 
     total_pages = calc_total_pages(total, per_page)
     ctx = {
-        "request": request, "docs": docs, "total": total,
+        "docs": docs, "total": total,
         "page": page, "per_page": per_page, "total_pages": total_pages,
         "search": search or "", "source": source or "", "batch": batch or "",
         "has_redactions": has_redactions, "stage": stage or "",
@@ -82,8 +82,8 @@ def list_documents(
 
     # HTMX partial response
     if request.headers.get("HX-Request"):
-        return templates.TemplateResponse("documents/table.html", ctx)
-    return templates.TemplateResponse("documents/list.html", ctx)
+        return templates.TemplateResponse(request, "documents/table.html", ctx)
+    return templates.TemplateResponse(request, "documents/list.html", ctx)
 
 @router.get("/{doc_id}", response_class=HTMLResponse)
 def document_detail(request: Request, doc_id: str):
@@ -92,8 +92,8 @@ def document_detail(request: Request, doc_id: str):
     doc = unob.get_document(doc_id)
     if doc is None:
         return Response(status_code=404)
-    return templates.TemplateResponse("documents/detail.html", {
-        "request": request, "doc": doc,
+    return templates.TemplateResponse(request, "documents/detail.html", {
+        "doc": doc,
         "is_admin": getattr(request.state, "is_admin", False),
         "csrf_token": getattr(request.state, "csrf_token", ""),
     })

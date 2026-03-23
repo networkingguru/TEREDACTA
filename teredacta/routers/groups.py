@@ -19,8 +19,8 @@ def list_groups(
     except FileNotFoundError:
         groups, total = [], 0
     total_pages = calc_total_pages(total, per_page)
-    return templates.TemplateResponse("groups/list.html", {
-        "request": request, "groups": groups,
+    return templates.TemplateResponse(request, "groups/list.html", {
+        "groups": groups,
         "total": total, "page": page, "per_page": per_page,
         "total_pages": total_pages,
         "is_admin": getattr(request.state, "is_admin", False),
@@ -34,8 +34,8 @@ def group_detail(request: Request, group_id: int):
     detail = unob.get_match_group_detail(group_id)
     if detail is None:
         return Response(status_code=404)
-    return templates.TemplateResponse("groups/detail.html", {
-        "request": request, "group": detail,
+    return templates.TemplateResponse(request, "groups/detail.html", {
+        "group": detail,
         "is_admin": getattr(request.state, "is_admin", False),
         "csrf_token": getattr(request.state, "csrf_token", ""),
     })

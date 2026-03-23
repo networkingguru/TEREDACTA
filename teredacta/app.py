@@ -79,8 +79,9 @@ def create_app(config: TeredactaConfig) -> FastAPI:
     async def db_not_found_handler(request: Request, exc: FileNotFoundError):
         logger.error("FileNotFoundError: %s", exc)
         return templates.TemplateResponse(
+            request,
             "error.html",
-            {"request": request, "error": "Database not found. Check your configuration.", "is_admin": False, "csrf_token": ""},
+            {"error": "Database not found. Check your configuration.", "is_admin": False, "csrf_token": ""},
             status_code=503,
         )
 

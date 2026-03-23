@@ -17,8 +17,8 @@ def list_queue(
         jobs = unob.get_jobs(status=status, page=page)
     except FileNotFoundError:
         jobs = []
-    return templates.TemplateResponse("queue/list.html", {
-        "request": request, "jobs": jobs, "status_filter": status or "",
+    return templates.TemplateResponse(request, "queue/list.html", {
+        "jobs": jobs, "status_filter": status or "",
         "is_admin": getattr(request.state, "is_admin", False),
         "csrf_token": getattr(request.state, "csrf_token", ""),
     })

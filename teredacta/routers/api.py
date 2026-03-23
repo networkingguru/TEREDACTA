@@ -8,7 +8,6 @@ router = APIRouter()
 def _ctx(request: Request, **kwargs) -> dict:
     """Build standard template context."""
     ctx = {
-        "request": request,
         "is_admin": getattr(request.state, "is_admin", False),
         "csrf_token": getattr(request.state, "csrf_token", ""),
     }
@@ -35,6 +34,7 @@ def entity_list(
     )
     total_pages = max(1, (total + 49) // 50)
     return templates.TemplateResponse(
+        request,
         "explore/entity_list.html",
         _ctx(request, entities=entities, total=total, page=page, total_pages=total_pages,
              current_type=entity_type, current_filter=name_filter),
@@ -49,6 +49,7 @@ def entity_connections(request: Request, entity_id: int):
     if connections is None:
         return Response(status_code=404)
     return templates.TemplateResponse(
+        request,
         "explore/connections.html",
         _ctx(request, **connections),
     )
@@ -73,6 +74,7 @@ def preview_recovery(request: Request, group_id: int):
                 snippet = text.strip()[:300]
                 break
     return templates.TemplateResponse(
+        request,
         "explore/preview.html",
         _ctx(request, recovery=detail, group_id=group_id, snippet=snippet),
     )
@@ -92,6 +94,7 @@ def preview_document(request: Request, doc_id: str):
     if doc.get("extracted_text"):
         excerpt = doc["extracted_text"][:500]
     return templates.TemplateResponse(
+        request,
         "explore/preview.html",
         _ctx(request, document=doc, doc_id=doc_id, excerpt=excerpt),
     )
@@ -106,6 +109,7 @@ def preview_entity(request: Request, entity_id: int):
         return Response(status_code=404)
     entity = connections["entity"]
     return templates.TemplateResponse(
+        request,
         "explore/preview.html",
         _ctx(
             request,

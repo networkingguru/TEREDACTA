@@ -65,8 +65,7 @@ def highlights_page(request: Request):
     except FileNotFoundError:
         pass
 
-    return templates.TemplateResponse("highlights.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "highlights.html", {
         "is_admin": getattr(request.state, "is_admin", False),
         "csrf_token": getattr(request.state, "csrf_token", ""),
         "top_recoveries": top_recoveries,

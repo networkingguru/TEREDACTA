@@ -22,7 +22,7 @@ def list_recoveries(
         recoveries, total = [], 0
     total_pages = calc_total_pages(total, per_page)
     ctx = {
-        "request": request, "recoveries": recoveries,
+        "recoveries": recoveries,
         "search": search or "",
         "sort": sort or "",
         "total": total,
@@ -33,8 +33,8 @@ def list_recoveries(
         "csrf_token": getattr(request.state, "csrf_token", ""),
     }
     if request.headers.get("HX-Request"):
-        return templates.TemplateResponse("recoveries/table.html", ctx)
-    return templates.TemplateResponse("recoveries/list.html", ctx)
+        return templates.TemplateResponse(request, "recoveries/table.html", ctx)
+    return templates.TemplateResponse(request, "recoveries/list.html", ctx)
 
 @router.get("/common", response_class=HTMLResponse)
 def common_unredactions(request: Request):
@@ -47,8 +47,8 @@ def common_unredactions(request: Request):
         common = []
     if not common:
         return HTMLResponse("")
-    return templates.TemplateResponse("recoveries/common_panel.html", {
-        "request": request, "common": common,
+    return templates.TemplateResponse(request, "recoveries/common_panel.html", {
+        "common": common,
     })
 
 @router.get("/{group_id:int}", response_class=HTMLResponse)
@@ -58,8 +58,8 @@ def recovery_detail(request: Request, group_id: int):
     detail = unob.get_recovery_detail(group_id)
     if detail is None:
         return Response(status_code=404)
-    return templates.TemplateResponse("recoveries/detail.html", {
-        "request": request, "recovery": detail, "group_id": group_id,
+    return templates.TemplateResponse(request, "recoveries/detail.html", {
+        "recovery": detail, "group_id": group_id,
         "is_admin": getattr(request.state, "is_admin", False),
         "csrf_token": getattr(request.state, "csrf_token", ""),
     })
@@ -71,8 +71,7 @@ def source_panel(request: Request, group_id: int, segment_index: int = Query(...
     ctx = unob.get_source_context(group_id, segment_index)
     if ctx is None:
         return Response(status_code=404)
-    return templates.TemplateResponse("recoveries/source_panel.html", {
-        "request": request,
+    return templates.TemplateResponse(request, "recoveries/source_panel.html", {
         "group_id": group_id,
         "segment_index": segment_index,
         **ctx,
@@ -94,8 +93,8 @@ def recovery_tab(request: Request, group_id: int, tab_name: str):
     detail = unob.get_recovery_detail(group_id)
     if detail is None:
         return Response(status_code=404)
-    return templates.TemplateResponse(template, {
-        "request": request, "recovery": detail, "group_id": group_id,
+    return templates.TemplateResponse(request, template, {
+        "recovery": detail, "group_id": group_id,
         "is_admin": getattr(request.state, "is_admin", False),
         "csrf_token": getattr(request.state, "csrf_token", ""),
     })
