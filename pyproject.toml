@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "teredacta"
 version = "0.1.0"
 description = "Web interface for Unobfuscator"
+license = {text = "MIT"}
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.104.0",
