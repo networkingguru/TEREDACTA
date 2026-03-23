@@ -107,6 +107,7 @@ class UnobInterface:
         self._common_cache_time: float = 0.0
         self._stats_cache: Optional[dict] = None
         self._stats_cache_time: float = 0.0  # monotonic
+        self._pool = None  # Lazy-initialized ConnectionPool
 
     @staticmethod
     def _estimate_total(rows: list, per_page: int, offset: int) -> tuple[list, int]:
@@ -118,20 +119,28 @@ class UnobInterface:
         return rows, offset + len(rows)
 
     def _get_db(self) -> sqlite3.Connection:
-        db_path = Path(self.config.db_path)
-        if not db_path.exists():
-            raise FileNotFoundError(
-                f"Database not found at {db_path}. "
-                "Check your TEREDACTA configuration."
+        if self._pool is None:
+            from teredacta.db_pool import ConnectionPool
+            db_path = Path(self.config.db_path)
+            if not db_path.exists():
+                raise FileNotFoundError(
+                    f"Database not found at {db_path}. "
+                    "Check your TEREDACTA configuration."
+                )
+            self._pool = ConnectionPool(
+                str(db_path), max_size=8, read_only=True, busy_timeout=5000
             )
-        conn = sqlite3.connect(
-            str(db_path),
-            timeout=5.0,
-        )
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA query_only = ON")
-        conn.execute("PRAGMA busy_timeout = 5000")
-        return conn
+        return self._pool.acquire()
+
+    def _release_db(self, conn: sqlite3.Connection):
+        if self._pool:
+            self._pool.release(conn)
+        else:
+            conn.close()
+
+    def close(self):
+        if self._pool:
+            self._pool.close()
 
     def ensure_indexes(self):
         """Create performance indexes if missing (must run before query_only)."""
@@ -195,7 +204,7 @@ class UnobInterface:
             self._stats_cache_time = time.monotonic()
             return stats
         finally:
-            conn.close()
+            self._release_db(conn)
 
     # --- Documents ---
 
@@ -300,7 +309,7 @@ class UnobInterface:
             docs = [dict(row) for row in rows]
             return docs, total
         finally:
-            conn.close()
+            self._release_db(conn)
 
     def get_document(self, doc_id: str) -> Optional[dict]:
         conn = self._get_db()
@@ -323,7 +332,7 @@ class UnobInterface:
 
             return doc
         finally:
-            conn.close()
+            self._release_db(conn)
 
     def get_docs_by_group_ids(self, group_ids: list[int], limit: int = 200) -> set[str]:
         """Return doc_ids for the given match group IDs."""
@@ -339,7 +348,7 @@ class UnobInterface:
             ).fetchall()
             return {r["doc_id"] for r in rows}
         finally:
-            conn.close()
+            self._release_db(conn)
 
     # --- Match Groups ---
 
@@ -364,7 +373,7 @@ class UnobInterface:
             """, (per_page, offset)).fetchall()
             return [dict(row) for row in rows], total
         finally:
-            conn.close()
+            self._release_db(conn)
 
     def get_match_group_detail(self, group_id: int) -> Optional[dict]:
         conn = self._get_db()
@@ -400,7 +409,7 @@ class UnobInterface:
             result["merge_result"] = dict(merge) if merge else None
             return result
         finally:
-            conn.close()
+            self._release_db(conn)
 
     # --- Recoveries ---
 
@@ -453,7 +462,7 @@ class UnobInterface:
             ).fetchall()
             return [dict(row) for row in rows], total
         finally:
-            conn.close()
+            self._release_db(conn)
 
     def get_recovery_detail(self, group_id: int) -> Optional[dict]:
         conn = self._get_db()
@@ -537,7 +546,7 @@ class UnobInterface:
 
             return result
         finally:
-            conn.close()
+            self._release_db(conn)
 
     def get_source_context(self, group_id: int, segment_index: int) -> Optional[dict]:
         """Get source document context for a recovered segment.
@@ -671,7 +680,7 @@ class UnobInterface:
                 "highlighted_text": highlighted_text,
             }
         finally:
-            conn.close()
+            self._release_db(conn)
 
     def get_common_unredactions(
         self,
@@ -732,7 +741,7 @@ class UnobInterface:
             self._common_cache_time = now
             return results[:limit]
         finally:
-            conn.close()
+            self._release_db(conn)
 
     # --- Jobs ---
 
@@ -757,7 +766,7 @@ class UnobInterface:
             ).fetchall()
             return [dict(row) for row in rows]
         finally:
-            conn.close()
+            self._release_db(conn)
 
     # --- Subprocess Commands ---
 

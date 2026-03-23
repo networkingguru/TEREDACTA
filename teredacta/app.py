@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 import logging
 from fastapi import FastAPI, Request
@@ -13,7 +14,12 @@ from teredacta.entity_index import EntityIndex
 from teredacta.unob import UnobInterface
 
 def create_app(config: TeredactaConfig) -> FastAPI:
-    app = FastAPI(title="TEREDACTA", docs_url=None, redoc_url=None)
+    @asynccontextmanager
+    async def lifespan(application: FastAPI):
+        yield
+        application.state.unob.close()
+
+    app = FastAPI(title="TEREDACTA", docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.config = config
     app.state.unob = UnobInterface(config)
     app.state.unob.ensure_indexes()
