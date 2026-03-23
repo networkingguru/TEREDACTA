@@ -1,0 +1,22 @@
+# Sample Caddyfile for TEREDACTA
+# Replace example.com with your domain.
+# Caddy handles HTTPS certificates automatically via Let's Encrypt.
+#
+# Install: https://caddyserver.com/docs/install
+# Run:     caddy run --config /path/to/Caddyfile
+
+example.com {
+    # Serve static files directly (bypasses Uvicorn)
+    handle_path /static/* {
+        root * /path/to/TEREDACTA/teredacta/static
+        file_server
+    }
+
+    # Proxy everything else to Uvicorn with SSE-friendly settings
+    reverse_proxy localhost:8000 {
+        flush_interval -1
+        transport http {
+            read_timeout 120s
+        }
+    }
+}
