@@ -76,7 +76,7 @@ Pure Python. No Node.js, no build step, no JS framework.
 - **Linux server** (Ubuntu 22.04+ recommended) or macOS
 - **Python 3.10+**
 - **git**
-- **~50 GB disk space** for datasets (PDF cache + database)
+- **~200 GB disk space** for the full dataset (PDF cache + database)
 
 ### Step 1: Clone TEREDACTA
 
@@ -117,7 +117,7 @@ source .venv/bin/activate
 python download_datasets.py
 ```
 
-This downloads the DOJ Epstein disclosure datasets from archive.org mirrors (~40 GB total). Downloads are resumable — if interrupted, re-run the same command.
+This downloads the DOJ Epstein disclosure datasets from archive.org mirrors (~200 GB total). Downloads are resumable — if interrupted, re-run the same command.
 
 ### Step 5: Start the pipeline
 
@@ -186,8 +186,9 @@ db_path: /path/to/Unobfuscator/data/unobfuscator.db
 pdf_cache_dir: /path/to/Unobfuscator/pdf_cache
 output_dir: /path/to/Unobfuscator/output
 log_path: /path/to/Unobfuscator/data/unobfuscator.log
-host: 127.0.0.1       # 0.0.0.0 for network access
+host: 127.0.0.1       # 0.0.0.0 for network access, 127.0.0.1 behind reverse proxy
 port: 8000
+workers: 1             # Uvicorn worker processes (4 recommended for production)
 secret_key: <generated-by-installer>  # persist this for stable sessions
 log_level: info
 ```
@@ -204,13 +205,15 @@ python -m teredacta run --host 0.0.0.0
 ## Architecture
 
 ```
-Browser ─── FastAPI ─┬─ SQLite (read-only) ─── Unobfuscator DB
-                     ├─ SQLite (read/write) ─── Entity Index DB
-                     ├─ SSE (live stats)
-                     └─ subprocess (admin) ──── Unobfuscator CLI
+Browser ─── Caddy (HTTPS) ─── Uvicorn (N workers) ─┬─ SQLite (read-only, pooled) ── Unobfuscator DB
+                                                     ├─ SQLite (read/write, WAL) ──── Entity Index DB
+                                                     ├─ SSE (admin only)
+                                                     └─ subprocess (admin) ─────────── Unobfuscator CLI
 ```
 
-Single FastAPI process with modular routers. Public routes are read-only. The entity index is a separate TEREDACTA-owned SQLite database built from recovered text — Unobfuscator's database is never modified.
+FastAPI application with configurable Uvicorn worker processes. Public routes are read-only with pooled SQLite connections. SSE live updates are restricted to admin pages. The entity index is a separate TEREDACTA-owned SQLite database — Unobfuscator's database is never modified.
+
+For production deployment behind a reverse proxy, see [deploy/README.md](deploy/README.md).
 
 ---
 
@@ -294,4 +297,4 @@ chmod -R o+r /path/to/Unobfuscator/pdf_cache/
 
 ## License
 
-Private.
+MIT. See [LICENSE](LICENSE).
