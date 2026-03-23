@@ -6,6 +6,7 @@ import shlex
 import sqlite3
 import subprocess
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -108,7 +109,7 @@ class UnobInterface:
         self._stats_cache: Optional[dict] = None
         self._stats_cache_time: float = 0.0  # monotonic
         self._pool = None  # Lazy-initialized ConnectionPool
-        self._pool_lock = __import__('threading').Lock()
+        self._pool_lock = threading.Lock()
 
     @staticmethod
     def _estimate_total(rows: list, per_page: int, offset: int) -> tuple[list, int]:
