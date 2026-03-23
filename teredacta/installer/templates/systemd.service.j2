@@ -5,6 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User={{ user }}
+LimitNOFILE=4096
 ExecStart=teredacta run --config {{ db_path | replace('/unobfuscator.db', '') }}/../.teredacta/config.yaml
 Restart=on-failure
 RestartSec=5
