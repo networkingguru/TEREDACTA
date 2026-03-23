@@ -9,7 +9,8 @@ import click
 import yaml
 
 
-_UNOB_REPO = "https://github.com/networkingguru/Unobfuscator.git"
+_UNOB_REPO_SSH = "git@github.com:networkingguru/Unobfuscator.git"
+_UNOB_REPO_HTTPS = "https://github.com/networkingguru/Unobfuscator.git"
 
 def _unob_search_paths() -> list[Path]:
     """Build search paths at call time so cwd() is current."""
@@ -167,15 +168,33 @@ def _install_unobfuscator() -> Path | None:
         click.echo("  Error: git is required. Install git and try again.")
         return None
 
-    click.echo(f"  Cloning {_UNOB_REPO}...")
-    try:
-        subprocess.run(
-            ["git", "clone", _UNOB_REPO, str(install_path)],
-            check=True,
+    # Try SSH first (works with deploy keys and SSH agents), fall back to HTTPS
+    cloned = False
+    for repo_url in [_UNOB_REPO_SSH, _UNOB_REPO_HTTPS]:
+        click.echo(f"  Trying {repo_url}...")
+        result = subprocess.run(
+            ["git", "clone", repo_url, str(install_path)],
+            capture_output=True, text=True,
         )
-    except subprocess.CalledProcessError as e:
-        click.echo(f"  Clone failed: {e}")
-        return None
+        if result.returncode == 0:
+            cloned = True
+            break
+        click.echo(f"  Failed ({result.stderr.strip().split(chr(10))[-1]})")
+        # Clean up partial clone before retrying
+        if install_path.exists():
+            shutil.rmtree(install_path, ignore_errors=True)
+
+    if not cloned:
+        custom = click.prompt("  Enter a custom clone URL (or 'skip' to skip)", default="skip")
+        if custom == "skip":
+            return None
+        result = subprocess.run(
+            ["git", "clone", custom, str(install_path)],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            click.echo(f"  Clone failed: {result.stderr.strip()}")
+            return None
 
     _ensure_unob_deps(install_path)
     return install_path
