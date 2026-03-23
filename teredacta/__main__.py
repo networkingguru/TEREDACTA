@@ -41,15 +41,31 @@ def cli():
 @click.option("--host", default=None, help="Bind host (overrides config)")
 @click.option("--port", default=None, type=int, help="Bind port (overrides config)")
 @click.option("--config", "config_path", default=None, help="Path to config file")
-def run(host, port, config_path):
+@click.option("--workers", "workers_override", default=None, type=int, help="Number of worker processes")
+def run(host, port, config_path, workers_override):
     """Start the TEREDACTA web server (foreground)."""
-    from teredacta.app import create_app
     import uvicorn
 
     cfg = _load_and_patch_cfg(config_path, host, port)
+    if workers_override:
+        cfg.workers = workers_override
     _print_banner(cfg)
-    app = create_app(cfg)
-    uvicorn.run(app, host=cfg.host, port=cfg.port)
+
+    if cfg.workers > 1:
+        # Multi-worker requires import string, not app instance.
+        # Store config in env so _app_factory.py can reconstruct it.
+        # Empty string → None round-trip is handled by the factory.
+        import os
+        os.environ["_TEREDACTA_CONFIG_PATH"] = config_path or ""
+        if host:
+            os.environ["_TEREDACTA_HOST"] = host
+        if port:
+            os.environ["_TEREDACTA_PORT"] = str(port)
+        uvicorn.run("teredacta._app_factory:app", host=cfg.host, port=cfg.port, workers=cfg.workers)
+    else:
+        from teredacta.app import create_app
+        app = create_app(cfg)
+        uvicorn.run(app, host=cfg.host, port=cfg.port)
 
 
 @cli.command()
@@ -76,6 +92,11 @@ def start(host, port, config_path, pid_file, log_file):
         sys.exit(1)
 
     cfg = _load_and_patch_cfg(config_path, host, port)
+
+    if cfg.workers > 1:
+        click.echo("Error: Multi-worker mode is not supported with 'teredacta start'.")
+        click.echo("Use systemd or 'teredacta run --workers N' instead.")
+        sys.exit(1)
 
     pid = os.fork()
     if pid > 0:
