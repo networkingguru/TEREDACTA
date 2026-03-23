@@ -49,6 +49,9 @@ def run(host, port, config_path, workers_override):
     cfg = _load_and_patch_cfg(config_path, host, port)
     if workers_override:
         cfg.workers = workers_override
+    if cfg.workers < 1:
+        click.echo("Error: workers must be >= 1")
+        sys.exit(1)
     _print_banner(cfg)
 
     if cfg.workers > 1:
@@ -57,6 +60,7 @@ def run(host, port, config_path, workers_override):
         # Empty string → None round-trip is handled by the factory.
         import os
         os.environ["_TEREDACTA_CONFIG_PATH"] = config_path or ""
+        os.environ["_TEREDACTA_SECRET_KEY"] = cfg.secret_key
         if host:
             os.environ["_TEREDACTA_HOST"] = host
         if port:

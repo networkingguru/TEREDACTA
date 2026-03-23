@@ -108,6 +108,7 @@ class UnobInterface:
         self._stats_cache: Optional[dict] = None
         self._stats_cache_time: float = 0.0  # monotonic
         self._pool = None  # Lazy-initialized ConnectionPool
+        self._pool_lock = __import__('threading').Lock()
 
     @staticmethod
     def _estimate_total(rows: list, per_page: int, offset: int) -> tuple[list, int]:
@@ -120,16 +121,18 @@ class UnobInterface:
 
     def _get_db(self) -> sqlite3.Connection:
         if self._pool is None:
-            from teredacta.db_pool import ConnectionPool
-            db_path = Path(self.config.db_path)
-            if not db_path.exists():
-                raise FileNotFoundError(
-                    f"Database not found at {db_path}. "
-                    "Check your TEREDACTA configuration."
-                )
-            self._pool = ConnectionPool(
-                str(db_path), max_size=8, read_only=True, busy_timeout=5000
-            )
+            with self._pool_lock:
+                if self._pool is None:  # double-checked locking
+                    from teredacta.db_pool import ConnectionPool
+                    db_path = Path(self.config.db_path)
+                    if not db_path.exists():
+                        raise FileNotFoundError(
+                            f"Database not found at {db_path}. "
+                            "Check your TEREDACTA configuration."
+                        )
+                    self._pool = ConnectionPool(
+                        str(db_path), max_size=8, read_only=True, busy_timeout=5000
+                    )
         return self._pool.acquire()
 
     def _release_db(self, conn: sqlite3.Connection):

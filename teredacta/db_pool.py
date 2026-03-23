@@ -50,7 +50,11 @@ class ConnectionPool:
         with self._lock:
             if self._size < self._max_size:
                 self._size += 1
-                return self._create_connection()
+                try:
+                    return self._create_connection()
+                except Exception:
+                    self._size -= 1
+                    raise
         try:
             return self._pool.get(timeout=timeout)
         except queue.Empty:

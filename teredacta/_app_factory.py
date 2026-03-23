@@ -17,9 +17,12 @@ _cfg = load_config(_config_path)
 
 _host = os.environ.get("_TEREDACTA_HOST")
 _port = os.environ.get("_TEREDACTA_PORT")
+_secret = os.environ.get("_TEREDACTA_SECRET_KEY")
 if _host:
     _cfg.host = _host
 if _port:
     _cfg.port = int(_port)
+if _secret:
+    _cfg.secret_key = _secret
 
 app = create_app(_cfg)

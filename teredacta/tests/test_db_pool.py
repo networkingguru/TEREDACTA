@@ -40,7 +40,7 @@ def test_pool_max_size(tmp_path):
         c3 = pool.acquire(timeout=0.1)
         pool.release(c3)
         assert False, "Should have raised"
-    except Exception:
+    except TimeoutError:
         pass
     pool.release(c1)
     pool.release(c2)

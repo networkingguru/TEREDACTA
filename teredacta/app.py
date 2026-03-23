@@ -47,7 +47,7 @@ def create_app(config: TeredactaConfig) -> FastAPI:
 
     from teredacta.routers import dashboard, documents, groups, recoveries, pdf, queue, summary, admin, explore, highlights, api
 
-    # SSE at root (all users need daemon status in nav)
+    # SSE at root (admin-only, guarded in dashboard.py)
     app.include_router(dashboard.sse_router)
 
     # API endpoints (HTML fragments)

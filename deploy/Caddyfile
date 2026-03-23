@@ -6,6 +6,13 @@
 # Run:     caddy run --config /path/to/Caddyfile
 
 example.com {
+    # Security headers for public-facing deployment
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
     # Serve static files directly (bypasses Uvicorn)
     handle_path /static/* {
         root * /path/to/TEREDACTA/teredacta/static
