@@ -209,13 +209,20 @@ def _ensure_unob_deps(unob_path: Path):
         return  # nothing to install
 
     pip = str(_venv_bin(venv_dir, "pip"))
-    if pip and Path(pip).exists():
-        return  # venv already set up
+    venv_exists = Path(pip).exists()
 
-    click.echo("  Setting up Unobfuscator virtualenv...")
+    if not venv_exists:
+        click.echo("  Creating Unobfuscator virtualenv...")
+        try:
+            subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
+            pip = str(_venv_bin(venv_dir, "pip"))
+        except subprocess.CalledProcessError as e:
+            click.echo(f"  Warning: venv creation failed: {e}")
+            return
+
+    # Always install/update requirements — pip is fast when everything is satisfied
+    click.echo("  Installing Unobfuscator dependencies...")
     try:
-        subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
-        pip = str(_venv_bin(venv_dir, "pip"))
         subprocess.run([pip, "install", "-q", "-r", str(req_file)], check=True)
         click.echo("  Dependencies installed.")
     except subprocess.CalledProcessError as e:
