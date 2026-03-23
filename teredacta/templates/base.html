@@ -22,9 +22,11 @@
             {% endif %}
         </div>
         <div class="nav-right">
+            {% if is_admin is defined and is_admin %}
             <span id="daemon-status" hx-get="/sse/daemon-status" hx-trigger="load, every 5s" hx-swap="innerHTML">
                 <span class="status-dot stopped"></span> CHECKING...
             </span>
+            {% endif %}
         </div>
     </nav>
     <main class="content">

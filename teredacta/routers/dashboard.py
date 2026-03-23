@@ -9,6 +9,8 @@ sse_router = APIRouter()
 
 @sse_router.get("/sse/stats")
 async def sse_stats(request: Request):
+    if not getattr(request.state, "is_admin", False):
+        return HTMLResponse("Forbidden", status_code=403)
     sse = getattr(request.app.state, "sse", None)
     if sse is None:
         return HTMLResponse("SSE not configured", status_code=503)
@@ -22,6 +24,8 @@ async def sse_stats(request: Request):
 
 @sse_router.get("/sse/daemon-status", response_class=HTMLResponse)
 async def daemon_status_fragment(request: Request):
+    if not getattr(request.state, "is_admin", False):
+        return HTMLResponse("", status_code=403)
     unob = request.app.state.unob
     loop = asyncio.get_running_loop()
     try:
