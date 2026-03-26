@@ -183,5 +183,63 @@ def install():
     run_wizard()
 
 
+@cli.command("reset-password")
+@click.option("--config", "config_path", default=None, help="Path to config file")
+@click.option("--remove", is_flag=True, help="Remove the admin password (disable remote admin)")
+def reset_password(config_path, remove):
+    """Set or reset the admin password in your config file."""
+    import bcrypt
+    import yaml
+    from teredacta.config import config_search_paths
+
+    # Find config file
+    if config_path is None:
+        for candidate in config_search_paths():
+            if candidate.exists():
+                config_path = str(candidate)
+                break
+
+    if config_path is None:
+        click.echo("Error: No config file found. Searched:")
+        for p in config_search_paths():
+            click.echo(f"  {p}")
+        click.echo("\nSpecify one with --config or run 'teredacta install' first.")
+        sys.exit(1)
+
+    config_file = Path(config_path)
+    if not config_file.exists():
+        click.echo(f"Error: Config file not found: {config_path}")
+        sys.exit(1)
+
+    click.echo(f"Config file: {config_file}")
+
+    with open(config_file) as f:
+        data = yaml.safe_load(f) or {}
+
+    if remove:
+        data.pop("admin_password_hash", None)
+        with open(config_file, "w") as f:
+            yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+        click.echo("Admin password removed. Remote admin access is now disabled.")
+        return
+
+    password = click.prompt("New admin password", hide_input=True)
+    confirm = click.prompt("Confirm password", hide_input=True)
+    if password != confirm:
+        click.echo("Error: Passwords do not match.")
+        sys.exit(1)
+    if len(password) < 8:
+        click.echo("Error: Password must be at least 8 characters.")
+        sys.exit(1)
+
+    hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    data["admin_password_hash"] = hashed
+
+    with open(config_file, "w") as f:
+        yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+
+    click.echo("Admin password updated successfully.")
+
+
 if __name__ == "__main__":
     cli()
