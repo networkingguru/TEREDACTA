@@ -303,6 +303,20 @@ def _generate_systemd(config: dict, unob_path: Path):
         f"[Install]\nWantedBy=default.target\n"
     )
     click.echo(f"  Wrote {teredacta_service}")
-    click.echo("  Enable with:")
-    click.echo("    systemctl --user enable --now unobfuscator")
-    click.echo("    systemctl --user enable --now teredacta")
+
+    # Reload unit files and enable+start both services
+    def _systemctl(*args):
+        cmd = ["systemctl", "--user"] + list(args)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            click.echo(f"  Warning: {' '.join(cmd)} failed: {result.stderr.strip()}")
+        return result.returncode == 0
+
+    click.echo("  Reloading systemd unit files...")
+    _systemctl("daemon-reload")
+    for svc in ("unobfuscator", "teredacta"):
+        if _systemctl("enable", "--now", svc):
+            click.echo(f"  Enabled and started {svc}.service")
+        else:
+            click.echo(f"  Could not auto-enable {svc}.service — run manually:")
+            click.echo(f"    systemctl --user enable --now {svc}")
