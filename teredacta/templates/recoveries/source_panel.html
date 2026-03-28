@@ -29,6 +29,8 @@
     <a href="/pdf/view?type=cache&path={{ pdf_cache_path | urlencode }}" target="_blank" class="btn btn-primary" style="font-size:0.8rem;" title="Open the full PDF in a new tab">
         View PDF
     </a>
+    {% elif has_pdf and pdf_url %}
+    <a href="{{ pdf_url }}" target="_blank" rel="noopener" style="font-size:0.8rem;color:var(--accent);">View PDF on source site &rarr;</a>
     {% elif has_pdf %}
     <span style="font-size:0.8rem;color:var(--text-secondary);">PDF not cached locally</span>
     {% else %}

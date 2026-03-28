@@ -32,22 +32,12 @@ def highlights_page(request: Request):
     # Top recoveries by recovered_count
     top_recoveries = []
     try:
-        conn = unob._get_db()
-        try:
-            rows = conn.execute(
-                "SELECT group_id, recovered_count, recovered_segments "
-                "FROM merge_results WHERE recovered_count > 0 "
-                "ORDER BY recovered_count DESC LIMIT 20"
-            ).fetchall()
-            for row in rows:
-                headline = _get_headline(row["recovered_segments"])
-                top_recoveries.append({
-                    "group_id": row["group_id"],
-                    "recovered_count": row["recovered_count"],
-                    "headline": headline,
-                })
-        finally:
-            conn.close()
+        for row in unob.get_top_recoveries(limit=20):
+            top_recoveries.append({
+                "group_id": row["group_id"],
+                "recovered_count": row["recovered_count"],
+                "headline": _get_headline(row["recovered_segments"]),
+            })
     except FileNotFoundError:
         pass
 

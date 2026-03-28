@@ -23,7 +23,7 @@ class AuthManager:
         response.set_cookie(
             "session", cookie_value, httponly=True, samesite="strict",
             max_age=self.config.session_timeout_minutes * 60,
-            secure=not self.config.is_local_mode,
+            secure=self.config.is_secure,
         )
         return csrf_token
 

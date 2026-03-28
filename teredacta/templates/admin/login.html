@@ -4,7 +4,7 @@
 <div class="admin-form">
     <h2>Admin Login</h2>
     {% if error %}<p class="error-banner">{{ error }}</p>{% endif %}
-    <form method="post" action="/admin/login">
+    <form method="post" action="/admin/login" hx-boost="false">
         <div class="form-group">
             <label for="password">Password</label>
             <input type="password" id="password" name="password" class="form-control" required>

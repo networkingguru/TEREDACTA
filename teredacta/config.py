@@ -31,6 +31,13 @@ class TeredactaConfig:
     # invalidates all existing sessions on restart. Persist a secret_key in
     # your config file (teredacta.yaml) to preserve sessions across restarts.
     secret_key: str = field(default_factory=lambda: os.urandom(32).hex())
+    secure_cookies: Optional[bool] = None
+
+    @property
+    def is_secure(self) -> bool:
+        if self.secure_cookies is not None:
+            return self.secure_cookies
+        return False
 
     @property
     def is_local_mode(self) -> bool:

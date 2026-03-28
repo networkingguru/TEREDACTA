@@ -552,6 +552,20 @@ class UnobInterface:
         finally:
             self._release_db(conn)
 
+    def get_top_recoveries(self, limit: int = 20) -> list[dict]:
+        """Get top recoveries by recovered_count."""
+        conn = self._get_db()
+        try:
+            rows = conn.execute(
+                "SELECT group_id, recovered_count, recovered_segments "
+                "FROM merge_results WHERE recovered_count > 0 "
+                "ORDER BY recovered_count DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            self._release_db(conn)
+
     def get_source_context(self, group_id: int, segment_index: int) -> Optional[dict]:
         """Get source document context for a recovered segment.
 
@@ -680,6 +694,7 @@ class UnobInterface:
                 "has_pdf": has_pdf,
                 "pdf_cached": pdf_cached,
                 "pdf_cache_path": pdf_cache_path,
+                "pdf_url": doc_row["pdf_url"] if doc_row else None,
                 "extracted_text": extracted_text,
                 "highlighted_text": highlighted_text,
             }
