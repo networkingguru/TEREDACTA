@@ -91,6 +91,7 @@ class UnobInterface:
 
     # TTL for common unredactions cache (seconds)
     _COMMON_CACHE_TTL = 300  # 5 minutes
+    _MAX_MEMBER_TEXT_CHARS = 102_400  # ~100K characters
     _STATS_CACHE_TTL = 10  # seconds
 
     _INDEXES = [
@@ -707,8 +708,6 @@ class UnobInterface:
         Returns a dict with 'doc_id' and 'text_html', or None if doc_id is not
         a member of group_id.
         """
-        _MAX_TEXT_CHARS = 102_400  # ~100K characters
-
         conn = self._get_db()
         try:
             # 1. Verify membership
@@ -733,10 +732,10 @@ class UnobInterface:
 
             # 3. Truncate if over limit
             truncated = False
-            if len(extracted) > _MAX_TEXT_CHARS:
-                cut = extracted.rfind(" ", _MAX_TEXT_CHARS - 200, _MAX_TEXT_CHARS)
+            if len(extracted) > self._MAX_MEMBER_TEXT_CHARS:
+                cut = extracted.rfind(" ", self._MAX_MEMBER_TEXT_CHARS - 200, self._MAX_MEMBER_TEXT_CHARS)
                 if cut < 0:
-                    cut = _MAX_TEXT_CHARS
+                    cut = self._MAX_MEMBER_TEXT_CHARS
                 extracted = extracted[:cut]
                 truncated = True
 

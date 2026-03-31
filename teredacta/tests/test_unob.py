@@ -404,7 +404,7 @@ class TestGetMemberText:
         result = unob.get_member_text(53, "big-doc")
         assert "Showing first" in result["text_html"]
         assert len(result["text_html"]) > 90_000
-        assert len(result["text_html"]) < 110_000
+        assert len(result["text_html"]) < 105_000
 
     def test_whitespace_normalized_match(self, test_config, mock_db):
         conn = sqlite3.connect(str(mock_db))
