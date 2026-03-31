@@ -418,8 +418,61 @@ class TestGetMemberText:
         test_config.db_path = str(mock_db)
         unob = UnobInterface(test_config)
         result = unob.get_member_text(55, "ws-doc")
+        # The highlighted text preserves original whitespace
+        assert "hello" in result["text_html"]
         assert '<mark class="recovered-inline">' in result["text_html"]
-        assert "hello world" in result["text_html"]
+
+    def test_newlines_preserved_in_output(self, test_config, mock_db):
+        """Newlines in extracted text are preserved, not collapsed."""
+        conn = sqlite3.connect(str(mock_db))
+        conn.execute(
+            "INSERT INTO documents (id, source, extracted_text, text_processed) "
+            "VALUES ('nl-doc', 'test', 'line one\nline two\nline three', 1)"
+        )
+        conn.execute("INSERT INTO match_groups (group_id, merged) VALUES (57, 1)")
+        conn.execute(
+            "INSERT INTO match_group_members (group_id, doc_id, similarity) "
+            "VALUES (57, 'nl-doc', 0.9)"
+        )
+        segments = json.dumps([{"source_doc_id": "other", "text": "line two"}])
+        conn.execute(
+            "INSERT INTO merge_results (group_id, merged_text, recovered_count, recovered_segments) "
+            "VALUES (57, '', 1, ?)", (segments,)
+        )
+        conn.commit()
+        conn.close()
+
+        test_config.db_path = str(mock_db)
+        unob = UnobInterface(test_config)
+        result = unob.get_member_text(57, "nl-doc")
+        # Newlines must be preserved (not collapsed by normalization)
+        assert "\n" in result["text_html"]
+        assert '<mark class="recovered-inline">' in result["text_html"]
+
+    def test_segment_matching_across_newlines(self, test_config, mock_db):
+        """Segment with spaces matches text that has newlines instead."""
+        conn = sqlite3.connect(str(mock_db))
+        conn.execute(
+            "INSERT INTO documents (id, source, extracted_text, text_processed) "
+            "VALUES ('cross-doc', 'test', 'hello\nworld foo', 1)"
+        )
+        conn.execute("INSERT INTO match_groups (group_id, merged) VALUES (58, 1)")
+        conn.execute(
+            "INSERT INTO match_group_members (group_id, doc_id, similarity) "
+            "VALUES (58, 'cross-doc', 0.9)"
+        )
+        segments = json.dumps([{"source_doc_id": "other", "text": "hello world"}])
+        conn.execute(
+            "INSERT INTO merge_results (group_id, merged_text, recovered_count, recovered_segments) "
+            "VALUES (58, '', 1, ?)", (segments,)
+        )
+        conn.commit()
+        conn.close()
+
+        test_config.db_path = str(mock_db)
+        unob = UnobInterface(test_config)
+        result = unob.get_member_text(58, "cross-doc")
+        assert '<mark class="recovered-inline">' in result["text_html"]
 
     def test_multiple_occurrences_all_highlighted(self, test_config, mock_db):
         conn = sqlite3.connect(str(mock_db))

@@ -752,39 +752,22 @@ class UnobInterface:
                         segments.append(seg["text"])
 
             # 5. Find all highlight ranges (role-agnostic)
-            # First try exact matches. If any segment fails exact match,
-            # normalize the entire text once and retry all segments.
             ranges = []
-            unmatched = set()
             for seg_text in segments:
+                # Try exact match first — find all occurrences
+                found = False
                 pos = extracted.find(seg_text)
-                if pos >= 0:
+                while pos >= 0:
                     ranges.append((pos, pos + len(seg_text)))
-                    # Also find additional occurrences
+                    found = True
                     pos = extracted.find(seg_text, pos + len(seg_text))
-                    while pos >= 0:
-                        ranges.append((pos, pos + len(seg_text)))
-                        pos = extracted.find(seg_text, pos + len(seg_text))
-                else:
-                    unmatched.add(seg_text)
-
-            # Retry unmatched segments with whitespace normalization
-            if unmatched:
-                norm_ext = " ".join(extracted.split())
-                # Switch to normalized text for all remaining work
-                # Re-find previously matched segments in normalized text
-                norm_ranges = []
-                for seg_text in segments:
-                    if seg_text in unmatched:
-                        norm_seg = " ".join(seg_text.split())
-                    else:
-                        norm_seg = seg_text
-                    pos = norm_ext.find(norm_seg)
-                    while pos >= 0:
-                        norm_ranges.append((pos, pos + len(norm_seg)))
-                        pos = norm_ext.find(norm_seg, pos + len(norm_seg))
-                extracted = norm_ext
-                ranges = norm_ranges
+                if not found:
+                    # Exact match failed — try regex with flexible whitespace between words
+                    words = seg_text.split()
+                    if words:
+                        pattern = r'\s+'.join(re.escape(w) for w in words)
+                        for m in re.finditer(pattern, extracted):
+                            ranges.append((m.start(), m.end()))
 
             # 6. Merge overlapping/adjacent ranges
             if ranges:
