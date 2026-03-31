@@ -207,6 +207,14 @@ class TestOriginalPDFsTab:
         assert 'data-pdf-path="TestBatch/doc1.pdf"' in resp.text
         assert 'data-pdf-path="TestBatch/doc2.pdf"' in resp.text
 
+    def test_tab_label_says_original_documents(self, client, tmp_dir, mock_db):
+        """Tab button should say 'Original Documents', not 'Original PDFs'."""
+        _seed_recovery(tmp_dir, mock_db)
+        resp = client.get("/recoveries/1")
+        assert resp.status_code == 200
+        assert "Original Documents" in resp.text
+        assert "Original PDFs" not in resp.text
+
     def test_single_member_no_donor_pane(self, client, tmp_dir, mock_db):
         """With only 1 member, there should be no donor pane, no comparison controls."""
         _seed_recovery(tmp_dir, mock_db, filenames=("doc1.pdf",))
