@@ -152,6 +152,62 @@ class TestGetMemberText:
         # Should be roughly 100KB, not the full 125KB
         assert len(result["text_html"]) < 110_000
 
+    def test_whitespace_normalized_match(self, test_config, mock_db):
+        """Segments with different whitespace still match via normalization."""
+        conn = sqlite3.connect(str(mock_db))
+        conn.execute(
+            "INSERT INTO documents (id, source, extracted_text, text_processed) "
+            "VALUES ('ws-doc', 'test', 'hello   world  foo   bar', 1)"
+        )
+        conn.execute("INSERT INTO match_groups (group_id, merged) VALUES (55, 1)")
+        conn.execute(
+            "INSERT INTO match_group_members (group_id, doc_id, similarity) "
+            "VALUES (55, 'ws-doc', 0.9)"
+        )
+        segments = json.dumps([
+            {"source_doc_id": "other", "text": "hello world"},
+        ])
+        conn.execute(
+            "INSERT INTO merge_results (group_id, merged_text, recovered_count, recovered_segments) "
+            "VALUES (55, '', 1, ?)", (segments,)
+        )
+        conn.commit()
+        conn.close()
+
+        test_config.db_path = str(mock_db)
+        unob = UnobInterface(test_config)
+        result = unob.get_member_text(55, "ws-doc")
+        assert '<mark class="recovered-inline">' in result["text_html"]
+        assert "hello world" in result["text_html"]
+
+    def test_multiple_occurrences_all_highlighted(self, test_config, mock_db):
+        """If a recovered passage appears twice, both occurrences are highlighted."""
+        conn = sqlite3.connect(str(mock_db))
+        conn.execute(
+            "INSERT INTO documents (id, source, extracted_text, text_processed) "
+            "VALUES ('multi-doc', 'test', 'hello world then hello world again', 1)"
+        )
+        conn.execute("INSERT INTO match_groups (group_id, merged) VALUES (56, 1)")
+        conn.execute(
+            "INSERT INTO match_group_members (group_id, doc_id, similarity) "
+            "VALUES (56, 'multi-doc', 0.9)"
+        )
+        segments = json.dumps([
+            {"source_doc_id": "other", "text": "hello world"},
+        ])
+        conn.execute(
+            "INSERT INTO merge_results (group_id, merged_text, recovered_count, recovered_segments) "
+            "VALUES (56, '', 1, ?)", (segments,)
+        )
+        conn.commit()
+        conn.close()
+
+        test_config.db_path = str(mock_db)
+        unob = UnobInterface(test_config)
+        result = unob.get_member_text(56, "multi-doc")
+        mark_count = result["text_html"].count('<mark class="recovered-inline">')
+        assert mark_count == 2
+
     def test_overlapping_segments_merged(self, test_config, mock_db):
         """Overlapping highlight ranges are merged, not doubled."""
         conn = sqlite3.connect(str(mock_db))
@@ -200,7 +256,7 @@ Add this method to the `UnobInterface` class, after `get_source_context` (after 
         Returns a dict with 'doc_id' and 'text_html', or None if doc_id is not
         a member of group_id.
         """
-        _MAX_TEXT_BYTES = 102_400  # 100 KB
+        _MAX_TEXT_CHARS = 102_400  # ~100K characters
 
         conn = self._get_db()
         try:
@@ -224,12 +280,12 @@ Add this method to the `UnobInterface` class, after `get_source_context` (after 
             if not extracted.strip():
                 return {"doc_id": doc_id, "text_html": '<span style="color:var(--text-secondary);">No extracted text available for this document.</span>'}
 
-            # 3. Truncate if over 100KB
+            # 3. Truncate if over limit
             truncated = False
-            if len(extracted) > _MAX_TEXT_BYTES:
-                cut = extracted.rfind(" ", _MAX_TEXT_BYTES - 200, _MAX_TEXT_BYTES)
+            if len(extracted) > _MAX_TEXT_CHARS:
+                cut = extracted.rfind(" ", _MAX_TEXT_CHARS - 200, _MAX_TEXT_CHARS)
                 if cut < 0:
-                    cut = _MAX_TEXT_BYTES
+                    cut = _MAX_TEXT_CHARS
                 extracted = extracted[:cut]
                 truncated = True
 
@@ -246,20 +302,39 @@ Add this method to the `UnobInterface` class, after `get_source_context` (after 
                         segments.append(seg["text"])
 
             # 5. Find all highlight ranges (role-agnostic)
+            # First try exact matches. If any segment fails exact match,
+            # normalize the entire text once and retry all segments.
             ranges = []
+            unmatched = []
             for seg_text in segments:
                 pos = extracted.find(seg_text)
-                if pos < 0:
-                    # Try whitespace-normalized match
-                    norm_seg = " ".join(seg_text.split())
-                    norm_ext = " ".join(extracted.split())
-                    pos = norm_ext.find(norm_seg)
-                    if pos >= 0:
-                        # Use normalized text for highlighting
-                        extracted = norm_ext
-                        ranges.append((pos, pos + len(norm_seg)))
-                else:
+                if pos >= 0:
                     ranges.append((pos, pos + len(seg_text)))
+                    # Also find additional occurrences
+                    pos = extracted.find(seg_text, pos + len(seg_text))
+                    while pos >= 0:
+                        ranges.append((pos, pos + len(seg_text)))
+                        pos = extracted.find(seg_text, pos + len(seg_text))
+                else:
+                    unmatched.append(seg_text)
+
+            # Retry unmatched segments with whitespace normalization
+            if unmatched:
+                norm_ext = " ".join(extracted.split())
+                # Switch to normalized text for all remaining work
+                # Re-find previously matched segments in normalized text
+                norm_ranges = []
+                for seg_text in segments:
+                    if seg_text in unmatched:
+                        norm_seg = " ".join(seg_text.split())
+                    else:
+                        norm_seg = seg_text
+                    pos = norm_ext.find(norm_seg)
+                    while pos >= 0:
+                        norm_ranges.append((pos, pos + len(norm_seg)))
+                        pos = norm_ext.find(norm_seg, pos + len(norm_seg))
+                extracted = norm_ext
+                ranges = norm_ranges
 
             # 6. Merge overlapping/adjacent ranges
             if ranges:
@@ -301,7 +376,7 @@ Add this method to the `UnobInterface` class, after `get_source_context` (after 
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `cd /root/TEREDACTA && python -m pytest teredacta/tests/test_unob.py::TestGetMemberText -v`
-Expected: All 8 tests PASS
+Expected: All 10 tests PASS
 
 - [ ] **Step 5: Commit**
 
@@ -344,8 +419,8 @@ def _seed_for_member_text(mock_db):
     segments = json.dumps([{"source_doc_id": "mt-doc-1", "text": "beautiful"}])
     conn.execute(
         "INSERT INTO merge_results (group_id, merged_text, recovered_count, source_doc_ids, recovered_segments) "
-        "VALUES (10, 'Hello beautiful world', 1, ?,'%s')" % segments.replace("'", "''"),
-        (json.dumps(["mt-doc-0", "mt-doc-1"]),),
+        "VALUES (10, 'Hello beautiful world', 1, ?, ?)",
+        (json.dumps(["mt-doc-0", "mt-doc-1"]), segments),
     )
     conn.commit()
     conn.close()
@@ -356,7 +431,6 @@ class TestMemberTextEndpoint:
         _seed_for_member_text(mock_db)
         resp = client.get("/recoveries/10/member-text?doc_id=mt-doc-1")
         assert resp.status_code == 200
-        assert "log-viewer" in resp.text
         assert '<mark class="recovered-inline">' in resp.text
         assert "beautiful" in resp.text
 
@@ -393,10 +467,9 @@ def member_text(request: Request, group_id: int, doc_id: str = Query(...)):
     result = unob.get_member_text(group_id, doc_id)
     if result is None:
         return Response(status_code=404)
-    return HTMLResponse(
-        f'<div class="log-viewer" style="max-height:600px;font-size:0.85rem;line-height:1.7;">'
-        f'{result["text_html"]}</div>'
-    )
+    # Return raw HTML fragment — the calling template already provides
+    # the wrapping log-viewer div, so we don't add another one here.
+    return HTMLResponse(result["text_html"])
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -417,6 +490,7 @@ git commit -m "feat: add /member-text endpoint for text comparison panes"
 
 **Files:**
 - Modify: `teredacta/templates/recoveries/detail.html:10`
+- Modify: `teredacta/templates/recoveries/tabs/merged_text.html:19,41` (references to "Original PDFs")
 - Test: `teredacta/tests/routers/test_original_pdfs_tab.py`
 
 - [ ] **Step 1: Write a failing test for the tab label**
@@ -450,20 +524,42 @@ to:
 >Original Documents</button>
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Update "Original PDFs" references in `merged_text.html`**
+
+The detail page includes `merged_text.html` by default, which references "Original PDFs" in two places. Update both:
+
+In `teredacta/templates/recoveries/tabs/merged_text.html` line 19, change:
+```
+the <strong>Original PDFs</strong> tab to view the scanned pages.
+```
+to:
+```
+the <strong>Original Documents</strong> tab to view the source documents.
+```
+
+In `teredacta/templates/recoveries/tabs/merged_text.html` line 41, change:
+```
+Use the <strong>Original PDFs</strong> tab to view the source documents.
+```
+to:
+```
+Use the <strong>Original Documents</strong> tab to view the source documents.
+```
+
+- [ ] **Step 5: Run test to verify it passes**
 
 Run: `cd /root/TEREDACTA && python -m pytest teredacta/tests/routers/test_original_pdfs_tab.py::TestOriginalPDFsTab::test_tab_label_says_original_documents -v`
 Expected: PASS
 
-- [ ] **Step 5: Run ALL original_pdfs_tab tests to check for regressions**
+- [ ] **Step 6: Run ALL original_pdfs_tab tests to check for regressions**
 
 Run: `cd /root/TEREDACTA && python -m pytest teredacta/tests/routers/test_original_pdfs_tab.py -v`
 Expected: All tests PASS (no test checks for "Original PDFs" text)
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add teredacta/templates/recoveries/detail.html teredacta/tests/routers/test_original_pdfs_tab.py
+git add teredacta/templates/recoveries/detail.html teredacta/templates/recoveries/tabs/merged_text.html teredacta/tests/routers/test_original_pdfs_tab.py
 git commit -m "feat: rename 'Original PDFs' tab to 'Original Documents'"
 ```
 
@@ -861,11 +957,13 @@ git commit -m "feat: extend scroll sync to support text comparison panes"
 **Files:**
 - Modify: `teredacta/tests/routers/test_original_pdfs_tab.py`
 
-This task handles any existing tests that fail due to the template changes. The most likely failures:
+This task handles existing tests that fail due to the template changes. Known tests that will break:
 
-- `test_email_message_unchanged` — expects "email record" text, which is now replaced with text pane loading
-- `test_tab_shows_message_when_no_cache` — expects "email record" or "not in local cache" for non-cached docs
-- Tests checking for specific `updateDonor` JS patterns that changed
+- `test_email_message_unchanged` (line 251) — asserts `"email record" in resp.text`, but email records now get text panes instead
+- `test_tab_shows_message_when_no_cache` (line 136) — asserts `"email record" in resp.text or "not in local cache" in resp.text`, but non-cached docs without `text_source` set are treated as email records and get text panes
+- `test_tab_renders_with_cached_pdfs` (line 118) — should still pass (both members have cached PDFs → iframe mode), but verify
+- `test_donor_pane_renders_link_for_pdf_url_member` (line 295) — donor with pdf_url but no cache now gets text pane in text mode, not the external link
+- `test_renders_source_link_when_pdf_url_present_no_cache` (line 224) — single member with pdf_url but no cache; primary pane is now a text pane
 
 - [ ] **Step 1: Run all original_pdfs_tab tests and identify failures**
 
@@ -873,12 +971,15 @@ Run: `cd /root/TEREDACTA && python -m pytest teredacta/tests/routers/test_origin
 
 - [ ] **Step 2: Update failing tests to match new behavior**
 
-For each failing test, update the assertions to match the new template behavior. For example:
+Apply these specific changes:
 
-- `test_email_message_unchanged`: Change assertion from `"email record" in resp.text` to `"member-text" in resp.text` (text pane loads instead of static message)
-- `test_tab_shows_message_when_no_cache`: For email records without cache, expect text pane loading instead of "not in local cache" message
+- `test_email_message_unchanged`: Change assertion to `assert "member-text" in resp.text` (text pane loads via fetch instead of static message)
+- `test_tab_shows_message_when_no_cache`: Change assertion to `assert "member-text" in resp.text or "log-viewer" in resp.text` (text pane loading replaces static messages)
+- `test_renders_source_link_when_pdf_url_present_no_cache`: Update to expect text pane rendering instead of external link for single-member case
+- `test_donor_pane_renders_link_for_pdf_url_member`: Update to expect text pane in donor for non-cached members
+- Any other failures: adapt assertions to match the new template's text-mode behavior
 
-The exact changes depend on which tests fail in Step 1.
+The agent executing this task should run the tests first and fix based on actual failures.
 
 - [ ] **Step 3: Run all tests to confirm everything passes**
 
@@ -921,7 +1022,6 @@ class TestTextComparisonIntegration:
         conn.execute("INSERT INTO match_groups (group_id, merged) VALUES (1, 1)")
         conn.execute("INSERT INTO match_group_members (group_id, doc_id, similarity) VALUES (1, 'int-redacted', 0.95)")
         conn.execute("INSERT INTO match_group_members (group_id, doc_id, similarity) VALUES (1, 'int-source', 0.90)")
-        import json
         segments = json.dumps([
             {"source_doc_id": "int-source", "text": "director"},
             {"source_doc_id": "int-source", "text": "analysts"},
@@ -954,10 +1054,10 @@ class TestTextComparisonIntegration:
         tab_resp = client.get("/recoveries/1/tab/original-pdfs")
         assert tab_resp.status_code == 200
         assert "member-text" in tab_resp.text
-        # Endpoint should return valid HTML
+        # Endpoint should return valid HTML fragment
         text_resp = client.get("/recoveries/1/member-text?doc_id=test-doc-0")
         assert text_resp.status_code == 200
-        assert "log-viewer" in text_resp.text
+        assert "text/html" in text_resp.headers["content-type"]
 
     def test_xss_in_member_text_endpoint(self, client, tmp_dir, mock_db):
         """Extracted text with HTML is escaped in member-text response."""
