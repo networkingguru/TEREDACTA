@@ -137,8 +137,8 @@ class TestOriginalPDFsTab:
         _seed_recovery(tmp_dir, mock_db, with_cache=False)
         resp = client.get("/recoveries/1/tab/original-pdfs")
         assert resp.status_code == 200
-        # Documents without text_source are email records
-        assert "email record" in resp.text or "not in local cache" in resp.text
+        # New behavior: non-cached docs without text_source get text panes instead of error messages
+        assert "log-viewer" in resp.text or "member-text" in resp.text
         # Should NOT have iframe src for PDFs when not cached
         assert '<iframe src="/pdf/embed' not in resp.text
 
@@ -230,21 +230,22 @@ class TestOriginalPDFsTabPdfUrl:
     """Tests for pdf_url messaging in the Original PDFs tab."""
 
     def test_renders_source_link_when_pdf_url_present_no_cache(self, client, tmp_dir, mock_db):
-        """When has_pdf and pdf_url but no cache, show link to source site."""
+        """When has_pdf and pdf_url but no local cache, new template shows a text pane."""
         _seed_recovery_with_pdf_url(tmp_dir, mock_db)
         resp = client.get("/recoveries/1/tab/original-pdfs")
         assert resp.status_code == 200
-        assert "View original on source site" in resp.text
-        assert "https://www.courtlistener.com/docket/99/doc1.pdf" in resp.text
+        # New behavior: single member without local PDF cache gets a text pane
+        assert "log-viewer" in resp.text
+        assert "primary-text" in resp.text
 
     def test_renders_plain_message_when_no_pdf_url_no_cache(self, client, tmp_dir, mock_db):
-        """When has_pdf but no pdf_url and no cache, show plain message."""
+        """When has_pdf but no pdf_url and no cache, new template shows a text pane."""
         _seed_recovery_with_pdf_url(tmp_dir, mock_db, pdf_url=None)
         resp = client.get("/recoveries/1/tab/original-pdfs")
         assert resp.status_code == 200
-        assert "PDF not in local cache." in resp.text
-        # Should NOT have source site link
-        assert "source site" not in resp.text
+        # New behavior: single member without local PDF cache gets a text pane
+        assert "log-viewer" in resp.text
+        assert "primary-text" in resp.text
 
     def test_iframe_when_cached_overrides_pdf_url(self, client, tmp_dir, mock_db):
         """When pdf_cache_path exists, show iframe regardless of pdf_url."""
@@ -257,11 +258,12 @@ class TestOriginalPDFsTabPdfUrl:
         assert "not in local cache" not in resp.text
 
     def test_email_message_unchanged(self, client, tmp_dir, mock_db):
-        """Email records still show the email message, pdf_url doesn't interfere."""
+        """Email records now get a text pane (loaded via fetch) instead of a static message."""
         _seed_recovery_with_email(tmp_dir, mock_db)
         resp = client.get("/recoveries/1/tab/original-pdfs")
         assert resp.status_code == 200
-        assert "email record" in resp.text
+        assert "log-viewer" in resp.text
+        assert "primary-text" in resp.text
 
     def test_data_pdf_url_attribute_populated(self, client, tmp_dir, mock_db):
         """Select options have data-pdf-url attribute populated."""
@@ -390,7 +392,10 @@ class TestTextPaneRendering:
         resp = client.get("/recoveries/1/tab/original-pdfs")
         assert resp.status_code == 200
         assert "No PDF available" not in resp.text
-        assert resp.text.count("member-text") >= 2
+        # New template uses log-viewer divs with ids primary-text and donor-text
+        assert "primary-text" in resp.text
+        assert "donor-text" in resp.text
+        assert resp.text.count("log-viewer") >= 2
 
 
 class TestSideBySideCSS:
