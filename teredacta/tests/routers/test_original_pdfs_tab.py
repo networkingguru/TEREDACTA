@@ -1,4 +1,5 @@
 """Thorough tests for the Original PDFs tab in recovery detail."""
+import json
 import sqlite3
 import pytest
 
@@ -406,3 +407,75 @@ class TestSideBySideCSS:
         assert resp.status_code == 200
         assert "single-view" in resp.text
         assert "display: none" in resp.text or "display:none" in resp.text
+
+
+class TestTextComparisonIntegration:
+    """End-to-end tests verifying the full text comparison flow."""
+
+    def test_member_text_endpoint_highlights_in_context(self, client, tmp_dir, mock_db):
+        """Fetch member-text for a doc and verify highlighted recovered passages."""
+        conn = sqlite3.connect(str(mock_db))
+        conn.execute(
+            "INSERT INTO documents (id, source, extracted_text, text_processed, text_source) "
+            "VALUES ('int-redacted', 'test', 'The [REDACTED] met with [REDACTED] on Tuesday.', 1, 'jmail')"
+        )
+        conn.execute(
+            "INSERT INTO documents (id, source, extracted_text, text_processed, text_source) "
+            "VALUES ('int-source', 'test', 'The director met with analysts on Tuesday.', 1, 'jmail')"
+        )
+        conn.execute("INSERT INTO match_groups (group_id, merged) VALUES (1, 1)")
+        conn.execute("INSERT INTO match_group_members (group_id, doc_id, similarity) VALUES (1, 'int-redacted', 0.95)")
+        conn.execute("INSERT INTO match_group_members (group_id, doc_id, similarity) VALUES (1, 'int-source', 0.90)")
+        segments = json.dumps([
+            {"source_doc_id": "int-source", "text": "director"},
+            {"source_doc_id": "int-source", "text": "analysts"},
+        ])
+        conn.execute(
+            "INSERT INTO merge_results (group_id, merged_text, recovered_count, source_doc_ids, recovered_segments) "
+            "VALUES (1, 'The director met with analysts on Tuesday.', 2, ?, ?)",
+            (json.dumps(["int-redacted", "int-source"]), segments),
+        )
+        conn.commit()
+        conn.close()
+
+        # Source doc should highlight "director" and "analysts"
+        resp = client.get("/recoveries/1/member-text?doc_id=int-source")
+        assert resp.status_code == 200
+        assert "director" in resp.text
+        assert "analysts" in resp.text
+        assert resp.text.count('<mark class="recovered-inline">') == 2
+
+        # Redacted doc won't have "director"/"analysts" — no highlights
+        resp2 = client.get("/recoveries/1/member-text?doc_id=int-redacted")
+        assert resp2.status_code == 200
+        assert "[REDACTED]" in resp2.text
+        assert '<mark class="recovered-inline">' not in resp2.text
+
+    def test_tab_and_endpoint_work_together(self, client, tmp_dir, mock_db):
+        """Tab renders text mode, endpoint returns valid HTML for both members."""
+        _seed_recovery_with_email(tmp_dir, mock_db)
+        # Tab should reference member-text endpoint
+        tab_resp = client.get("/recoveries/1/tab/original-pdfs")
+        assert tab_resp.status_code == 200
+        assert "member-text" in tab_resp.text
+        # Endpoint should return valid HTML fragment
+        text_resp = client.get("/recoveries/1/member-text?doc_id=test-doc-0")
+        assert text_resp.status_code == 200
+        assert "text/html" in text_resp.headers["content-type"]
+
+    def test_xss_in_member_text_endpoint(self, client, tmp_dir, mock_db):
+        """Extracted text with HTML is escaped in member-text response."""
+        conn = sqlite3.connect(str(mock_db))
+        conn.execute(
+            "INSERT INTO documents (id, source, extracted_text, text_processed, text_source) "
+            "VALUES ('xss-test', 'test', '<img onerror=alert(1) src=x> normal text', 1, 'jmail')"
+        )
+        conn.execute("INSERT INTO match_groups (group_id, merged) VALUES (1, 1)")
+        conn.execute("INSERT INTO match_group_members (group_id, doc_id, similarity) VALUES (1, 'xss-test', 0.9)")
+        conn.execute("INSERT INTO merge_results (group_id, merged_text, recovered_count) VALUES (1, '', 0)")
+        conn.commit()
+        conn.close()
+        resp = client.get("/recoveries/1/member-text?doc_id=xss-test")
+        assert resp.status_code == 200
+        assert "<img" not in resp.text
+        assert "&lt;img" in resp.text
