@@ -7,7 +7,7 @@
 <div class="tabs" data-group-id="{{ group_id }}">
     <button class="tab active" hx-get="/recoveries/{{ group_id }}/tab/merged-text" hx-target="#tab-content" onclick="document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">Merged Text</button>
     <button class="tab" hx-get="/recoveries/{{ group_id }}/tab/output-pdf" hx-target="#tab-content" onclick="document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">Output PDF</button>
-    <button class="tab" hx-get="/recoveries/{{ group_id }}/tab/original-pdfs" hx-target="#tab-content" onclick="document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">Original PDFs</button>
+    <button class="tab" hx-get="/recoveries/{{ group_id }}/tab/original-pdfs" hx-target="#tab-content" onclick="document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">Original Documents</button>
     <button class="tab" hx-get="/recoveries/{{ group_id }}/tab/metadata" hx-target="#tab-content" onclick="document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">Metadata</button>
 </div>
 <div id="tab-content" class="tab-content">

@@ -1,4 +1,5 @@
 """Thorough tests for the Original PDFs tab in recovery detail."""
+import json
 import sqlite3
 import pytest
 
@@ -137,8 +138,8 @@ class TestOriginalPDFsTab:
         _seed_recovery(tmp_dir, mock_db, with_cache=False)
         resp = client.get("/recoveries/1/tab/original-pdfs")
         assert resp.status_code == 200
-        # Documents without text_source are email records
-        assert "email record" in resp.text or "not in local cache" in resp.text
+        # New behavior: non-cached docs without text_source get text panes instead of error messages
+        assert "log-viewer" in resp.text or "member-text" in resp.text
         # Should NOT have iframe src for PDFs when not cached
         assert '<iframe src="/pdf/embed' not in resp.text
 
@@ -207,6 +208,14 @@ class TestOriginalPDFsTab:
         assert 'data-pdf-path="TestBatch/doc1.pdf"' in resp.text
         assert 'data-pdf-path="TestBatch/doc2.pdf"' in resp.text
 
+    def test_tab_label_says_original_documents(self, client, tmp_dir, mock_db):
+        """Tab button should say 'Original Documents', not 'Original PDFs'."""
+        _seed_recovery(tmp_dir, mock_db)
+        resp = client.get("/recoveries/1")
+        assert resp.status_code == 200
+        assert "Original Documents" in resp.text
+        assert "Original PDFs" not in resp.text
+
     def test_single_member_no_donor_pane(self, client, tmp_dir, mock_db):
         """With only 1 member, there should be no donor pane, no comparison controls."""
         _seed_recovery(tmp_dir, mock_db, filenames=("doc1.pdf",))
@@ -222,21 +231,22 @@ class TestOriginalPDFsTabPdfUrl:
     """Tests for pdf_url messaging in the Original PDFs tab."""
 
     def test_renders_source_link_when_pdf_url_present_no_cache(self, client, tmp_dir, mock_db):
-        """When has_pdf and pdf_url but no cache, show link to source site."""
+        """When has_pdf and pdf_url but no local cache, new template shows a text pane."""
         _seed_recovery_with_pdf_url(tmp_dir, mock_db)
         resp = client.get("/recoveries/1/tab/original-pdfs")
         assert resp.status_code == 200
-        assert "View original on source site" in resp.text
-        assert "https://www.courtlistener.com/docket/99/doc1.pdf" in resp.text
+        # New behavior: single member without local PDF cache gets a text pane
+        assert "log-viewer" in resp.text
+        assert "primary-text" in resp.text
 
     def test_renders_plain_message_when_no_pdf_url_no_cache(self, client, tmp_dir, mock_db):
-        """When has_pdf but no pdf_url and no cache, show plain message."""
+        """When has_pdf but no pdf_url and no cache, new template shows a text pane."""
         _seed_recovery_with_pdf_url(tmp_dir, mock_db, pdf_url=None)
         resp = client.get("/recoveries/1/tab/original-pdfs")
         assert resp.status_code == 200
-        assert "PDF not in local cache." in resp.text
-        # Should NOT have source site link
-        assert "source site" not in resp.text
+        # New behavior: single member without local PDF cache gets a text pane
+        assert "log-viewer" in resp.text
+        assert "primary-text" in resp.text
 
     def test_iframe_when_cached_overrides_pdf_url(self, client, tmp_dir, mock_db):
         """When pdf_cache_path exists, show iframe regardless of pdf_url."""
@@ -249,11 +259,12 @@ class TestOriginalPDFsTabPdfUrl:
         assert "not in local cache" not in resp.text
 
     def test_email_message_unchanged(self, client, tmp_dir, mock_db):
-        """Email records still show the email message, pdf_url doesn't interfere."""
+        """Email records now get a text pane (loaded via fetch) instead of a static message."""
         _seed_recovery_with_email(tmp_dir, mock_db)
         resp = client.get("/recoveries/1/tab/original-pdfs")
         assert resp.status_code == 200
-        assert "email record" in resp.text
+        assert "log-viewer" in resp.text
+        assert "primary-text" in resp.text
 
     def test_data_pdf_url_attribute_populated(self, client, tmp_dir, mock_db):
         """Select options have data-pdf-url attribute populated."""
@@ -327,6 +338,67 @@ class TestEmbedViewer:
         assert "resize" in resp.text
 
 
+class TestTextPaneRendering:
+    """Tests for text mode in the Original Documents tab."""
+
+    def test_email_members_get_text_panes(self, client, tmp_dir, mock_db):
+        """Email-only members should get text pane placeholders, not 'No PDF' messages."""
+        _seed_recovery_with_email(tmp_dir, mock_db)
+        resp = client.get("/recoveries/1/tab/original-pdfs")
+        assert resp.status_code == 200
+        assert "No PDF available" not in resp.text
+        assert "member-text" in resp.text
+
+    def test_primary_pane_has_data_doc_id(self, client, tmp_dir, mock_db):
+        _seed_recovery(tmp_dir, mock_db)
+        resp = client.get("/recoveries/1/tab/original-pdfs")
+        assert resp.status_code == 200
+        assert 'data-doc-id="test-doc-0"' in resp.text
+
+    def test_primary_pane_has_data_pdf_path(self, client, tmp_dir, mock_db):
+        _seed_recovery(tmp_dir, mock_db)
+        resp = client.get("/recoveries/1/tab/original-pdfs")
+        assert resp.status_code == 200
+        assert 'data-pdf-path="TestBatch/doc1.pdf"' in resp.text
+
+    def test_pdf_mode_still_renders_iframes(self, client, tmp_dir, mock_db):
+        _seed_recovery(tmp_dir, mock_db)
+        resp = client.get("/recoveries/1/tab/original-pdfs")
+        assert resp.status_code == 200
+        assert "iframe" in resp.text
+        assert "/pdf/embed?" in resp.text
+
+    def test_two_email_members_both_get_text_panes(self, client, tmp_dir, mock_db):
+        import json as _json
+        conn = sqlite3.connect(str(mock_db))
+        for i in range(2):
+            conn.execute(
+                "INSERT INTO documents (id, source, extracted_text, text_processed, text_source) "
+                "VALUES (?, 'test', 'email text', 1, 'jmail')",
+                (f"email-doc-{i}",),
+            )
+        conn.execute("INSERT INTO match_groups (group_id, merged) VALUES (1, 1)")
+        for i in range(2):
+            conn.execute(
+                "INSERT INTO match_group_members (group_id, doc_id, similarity) VALUES (1, ?, ?)",
+                (f"email-doc-{i}", 0.95 - i * 0.05),
+            )
+        conn.execute(
+            "INSERT INTO merge_results (group_id, merged_text, recovered_count, source_doc_ids) "
+            "VALUES (1, 'email text', 1, ?)",
+            (_json.dumps(["email-doc-0", "email-doc-1"]),),
+        )
+        conn.commit()
+        conn.close()
+        resp = client.get("/recoveries/1/tab/original-pdfs")
+        assert resp.status_code == 200
+        assert "No PDF available" not in resp.text
+        # New template uses log-viewer divs with ids primary-text and donor-text
+        assert "primary-text" in resp.text
+        assert "donor-text" in resp.text
+        assert resp.text.count("log-viewer") >= 2
+
+
 class TestSideBySideCSS:
     """Verify the CSS supports side-by-side and single-view modes."""
 
@@ -335,3 +407,75 @@ class TestSideBySideCSS:
         assert resp.status_code == 200
         assert "single-view" in resp.text
         assert "display: none" in resp.text or "display:none" in resp.text
+
+
+class TestTextComparisonIntegration:
+    """End-to-end tests verifying the full text comparison flow."""
+
+    def test_member_text_endpoint_highlights_in_context(self, client, tmp_dir, mock_db):
+        """Fetch member-text for a doc and verify highlighted recovered passages."""
+        conn = sqlite3.connect(str(mock_db))
+        conn.execute(
+            "INSERT INTO documents (id, source, extracted_text, text_processed, text_source) "
+            "VALUES ('int-redacted', 'test', 'The [REDACTED] met with [REDACTED] on Tuesday.', 1, 'jmail')"
+        )
+        conn.execute(
+            "INSERT INTO documents (id, source, extracted_text, text_processed, text_source) "
+            "VALUES ('int-source', 'test', 'The director met with analysts on Tuesday.', 1, 'jmail')"
+        )
+        conn.execute("INSERT INTO match_groups (group_id, merged) VALUES (1, 1)")
+        conn.execute("INSERT INTO match_group_members (group_id, doc_id, similarity) VALUES (1, 'int-redacted', 0.95)")
+        conn.execute("INSERT INTO match_group_members (group_id, doc_id, similarity) VALUES (1, 'int-source', 0.90)")
+        segments = json.dumps([
+            {"source_doc_id": "int-source", "text": "director"},
+            {"source_doc_id": "int-source", "text": "analysts"},
+        ])
+        conn.execute(
+            "INSERT INTO merge_results (group_id, merged_text, recovered_count, source_doc_ids, recovered_segments) "
+            "VALUES (1, 'The director met with analysts on Tuesday.', 2, ?, ?)",
+            (json.dumps(["int-redacted", "int-source"]), segments),
+        )
+        conn.commit()
+        conn.close()
+
+        # Source doc should highlight "director" and "analysts"
+        resp = client.get("/recoveries/1/member-text?doc_id=int-source")
+        assert resp.status_code == 200
+        assert "director" in resp.text
+        assert "analysts" in resp.text
+        assert resp.text.count('<mark class="recovered-inline">') == 2
+
+        # Redacted doc won't have "director"/"analysts" — no highlights
+        resp2 = client.get("/recoveries/1/member-text?doc_id=int-redacted")
+        assert resp2.status_code == 200
+        assert "[REDACTED]" in resp2.text
+        assert '<mark class="recovered-inline">' not in resp2.text
+
+    def test_tab_and_endpoint_work_together(self, client, tmp_dir, mock_db):
+        """Tab renders text mode, endpoint returns valid HTML for both members."""
+        _seed_recovery_with_email(tmp_dir, mock_db)
+        # Tab should reference member-text endpoint
+        tab_resp = client.get("/recoveries/1/tab/original-pdfs")
+        assert tab_resp.status_code == 200
+        assert "member-text" in tab_resp.text
+        # Endpoint should return valid HTML fragment
+        text_resp = client.get("/recoveries/1/member-text?doc_id=test-doc-0")
+        assert text_resp.status_code == 200
+        assert "text/html" in text_resp.headers["content-type"]
+
+    def test_xss_in_member_text_endpoint(self, client, tmp_dir, mock_db):
+        """Extracted text with HTML is escaped in member-text response."""
+        conn = sqlite3.connect(str(mock_db))
+        conn.execute(
+            "INSERT INTO documents (id, source, extracted_text, text_processed, text_source) "
+            "VALUES ('xss-test', 'test', '<img onerror=alert(1) src=x> normal text', 1, 'jmail')"
+        )
+        conn.execute("INSERT INTO match_groups (group_id, merged) VALUES (1, 1)")
+        conn.execute("INSERT INTO match_group_members (group_id, doc_id, similarity) VALUES (1, 'xss-test', 0.9)")
+        conn.execute("INSERT INTO merge_results (group_id, merged_text, recovered_count) VALUES (1, '', 0)")
+        conn.commit()
+        conn.close()
+        resp = client.get("/recoveries/1/member-text?doc_id=xss-test")
+        assert resp.status_code == 200
+        assert "<img" not in resp.text
+        assert "&lt;img" in resp.text

@@ -91,6 +91,7 @@ class UnobInterface:
 
     # TTL for common unredactions cache (seconds)
     _COMMON_CACHE_TTL = 300  # 5 minutes
+    _MAX_MEMBER_TEXT_CHARS = 102_400  # ~100K characters
     _STATS_CACHE_TTL = 10  # seconds
 
     _INDEXES = [
@@ -698,6 +699,126 @@ class UnobInterface:
                 "extracted_text": extracted_text,
                 "highlighted_text": highlighted_text,
             }
+        finally:
+            self._release_db(conn)
+
+    def get_member_text(self, group_id: int, doc_id: str) -> Optional[dict]:
+        """Get full extracted text for a group member with recovered passages highlighted.
+
+        Returns a dict with 'doc_id' and 'text_html', or None if doc_id is not
+        a member of group_id.
+        """
+        conn = self._get_db()
+        try:
+            # 1. Verify membership
+            membership = conn.execute(
+                "SELECT 1 FROM match_group_members WHERE group_id = ? AND doc_id = ?",
+                (group_id, doc_id),
+            ).fetchone()
+            if membership is None:
+                return None
+
+            # 2. Fetch extracted text
+            doc_row = conn.execute(
+                "SELECT extracted_text FROM documents WHERE id = ?",
+                (doc_id,),
+            ).fetchone()
+            if doc_row is None:
+                return None
+
+            extracted = doc_row["extracted_text"] or ""
+            if not extracted.strip():
+                return {"doc_id": doc_id, "text_html": '<span style="color:var(--text-secondary);">No extracted text available for this document.</span>'}
+
+            # 3. Truncate if over limit
+            truncated = False
+            if len(extracted) > self._MAX_MEMBER_TEXT_CHARS:
+                cut = extracted.rfind(" ", self._MAX_MEMBER_TEXT_CHARS - 200, self._MAX_MEMBER_TEXT_CHARS)
+                if cut < 0:
+                    cut = self._MAX_MEMBER_TEXT_CHARS
+                extracted = extracted[:cut]
+                truncated = True
+
+            # 4. Fetch recovered segments (no filter on recovered_count)
+            seg_row = conn.execute(
+                "SELECT recovered_segments FROM merge_results WHERE group_id = ?",
+                (group_id,),
+            ).fetchone()
+            segments = []
+            if seg_row and seg_row["recovered_segments"]:
+                raw = json.loads(seg_row["recovered_segments"])
+                for seg in raw:
+                    if isinstance(seg, dict) and seg.get("text"):
+                        segments.append(seg["text"])
+
+            # 5. Find all highlight ranges (role-agnostic)
+            # First try exact matches. If any segment fails exact match,
+            # normalize the entire text once and retry all segments.
+            ranges = []
+            unmatched = set()
+            for seg_text in segments:
+                pos = extracted.find(seg_text)
+                if pos >= 0:
+                    ranges.append((pos, pos + len(seg_text)))
+                    # Also find additional occurrences
+                    pos = extracted.find(seg_text, pos + len(seg_text))
+                    while pos >= 0:
+                        ranges.append((pos, pos + len(seg_text)))
+                        pos = extracted.find(seg_text, pos + len(seg_text))
+                else:
+                    unmatched.add(seg_text)
+
+            # Retry unmatched segments with whitespace normalization
+            if unmatched:
+                norm_ext = " ".join(extracted.split())
+                # Switch to normalized text for all remaining work
+                # Re-find previously matched segments in normalized text
+                norm_ranges = []
+                for seg_text in segments:
+                    if seg_text in unmatched:
+                        norm_seg = " ".join(seg_text.split())
+                    else:
+                        norm_seg = seg_text
+                    pos = norm_ext.find(norm_seg)
+                    while pos >= 0:
+                        norm_ranges.append((pos, pos + len(norm_seg)))
+                        pos = norm_ext.find(norm_seg, pos + len(norm_seg))
+                extracted = norm_ext
+                ranges = norm_ranges
+
+            # 6. Merge overlapping/adjacent ranges
+            if ranges:
+                ranges.sort()
+                merged = [ranges[0]]
+                for start, end in ranges[1:]:
+                    if start <= merged[-1][1]:
+                        merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+                    else:
+                        merged.append((start, end))
+                ranges = merged
+
+            # 7. Build HTML in one pass
+            parts = []
+            prev = 0
+            for start, end in ranges:
+                if start > prev:
+                    parts.append(html.escape(extracted[prev:start]))
+                parts.append('<mark class="recovered-inline">')
+                parts.append(html.escape(extracted[start:end]))
+                parts.append("</mark>")
+                prev = end
+            if prev < len(extracted):
+                parts.append(html.escape(extracted[prev:]))
+
+            text_html = "".join(parts)
+            if truncated:
+                text_html += (
+                    '\n<div style="padding:0.5rem;color:var(--text-secondary);font-size:0.8rem;'
+                    'border-top:1px solid var(--border);margin-top:0.5rem;">'
+                    "Showing first ~100KB. View full text on document detail page.</div>"
+                )
+
+            return {"doc_id": doc_id, "text_html": text_html}
         finally:
             self._release_db(conn)
 

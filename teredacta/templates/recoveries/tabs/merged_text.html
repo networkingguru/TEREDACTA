@@ -16,7 +16,7 @@
 <p style="color:var(--text-secondary);padding:0.75rem 0;">
     No merged text available for this recovery.
     The source documents may be image-only PDFs with no extractable text.
-    Check the <strong>Metadata</strong> tab for source document details, or the <strong>Original PDFs</strong> tab to view the scanned pages.
+    Check the <strong>Metadata</strong> tab for source document details, or the <strong>Original Documents</strong> tab to view the source documents.
 </p>
 {% endif %}
 
@@ -38,7 +38,7 @@
 {% if not ns.showed_any %}
 <p style="color:var(--text-secondary);font-size:0.875rem;">
     {{ real_segments | length }} recovered segment(s) contain only image descriptions (no plain text).
-    Use the <strong>Original PDFs</strong> tab to view the source documents.
+    Use the <strong>Original Documents</strong> tab to view the source documents.
 </p>
 {% endif %}
 {% endif %}

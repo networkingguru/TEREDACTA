@@ -77,6 +77,16 @@ def source_panel(request: Request, group_id: int, segment_index: int = Query(...
         **ctx,
     })
 
+@router.get("/{group_id:int}/member-text", response_class=HTMLResponse)
+def member_text(request: Request, group_id: int, doc_id: str = Query(...)):
+    unob = request.app.state.unob
+    result = unob.get_member_text(group_id, doc_id)
+    if result is None:
+        return Response(status_code=404)
+    # Return raw HTML fragment — the calling template already provides
+    # the wrapping log-viewer div, so we don't add another one here.
+    return HTMLResponse(result["text_html"])
+
 @router.get("/{group_id:int}/tab/{tab_name}", response_class=HTMLResponse)
 def recovery_tab(request: Request, group_id: int, tab_name: str):
     tab_map = {
