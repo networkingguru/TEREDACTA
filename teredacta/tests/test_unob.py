@@ -28,7 +28,7 @@ def populated_db(mock_db):
         "page_count, description, extracted_text, text_processed, pdf_processed) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         ("doc-002", "doj", "VOL00001", "email.pdf", 1,
-         "Email chain", "From: JE To: GM Subject: plans", 1, 1),
+         "Email chain", "From: JE To: Ghislaine Maxwell Subject: the townhouse on 71st", 1, 1),
     )
     # Insert fingerprint
     conn.execute(
@@ -320,3 +320,134 @@ class TestUnobSubprocess:
             mock_run.return_value.returncode = 0
             result = unob.stop_daemon()
             assert result["success"] is True
+
+
+class TestGetMemberText:
+    """Tests for get_member_text() — highlighted text for comparison panes."""
+
+    def test_returns_highlighted_text(self, test_config, populated_db):
+        """Recovered passages are highlighted in source doc text."""
+        test_config.db_path = str(populated_db)
+        unob = UnobInterface(test_config)
+        result = unob.get_member_text(1, "doc-002")
+        assert result is not None
+        assert result["doc_id"] == "doc-002"
+        assert '<mark class="recovered-inline">' in result["text_html"]
+        assert "Ghislaine Maxwell" in result["text_html"]
+
+    def test_returns_none_for_nonmember(self, test_config, populated_db):
+        test_config.db_path = str(populated_db)
+        unob = UnobInterface(test_config)
+        result = unob.get_member_text(1, "nonexistent-doc")
+        assert result is None
+
+    def test_returns_none_for_nonexistent_group(self, test_config, populated_db):
+        test_config.db_path = str(populated_db)
+        unob = UnobInterface(test_config)
+        result = unob.get_member_text(999, "doc-001")
+        assert result is None
+
+    def test_no_segments_returns_plain_text(self, test_config, mock_db):
+        conn = sqlite3.connect(str(mock_db))
+        conn.execute("INSERT INTO documents (id, source, extracted_text, text_processed) VALUES ('solo-doc', 'test', 'plain text here', 1)")
+        conn.execute("INSERT INTO match_groups (group_id, merged) VALUES (50, 1)")
+        conn.execute("INSERT INTO match_group_members (group_id, doc_id, similarity) VALUES (50, 'solo-doc', 0.9)")
+        conn.execute("INSERT INTO merge_results (group_id, merged_text, recovered_count) VALUES (50, 'plain text here', 0)")
+        conn.commit()
+        conn.close()
+        test_config.db_path = str(mock_db)
+        unob = UnobInterface(test_config)
+        result = unob.get_member_text(50, "solo-doc")
+        assert result is not None
+        assert "plain text here" in result["text_html"]
+        assert "<mark" not in result["text_html"]
+
+    def test_empty_extracted_text(self, test_config, mock_db):
+        conn = sqlite3.connect(str(mock_db))
+        conn.execute("INSERT INTO documents (id, source, extracted_text, text_processed) VALUES ('empty-doc', 'test', '', 1)")
+        conn.execute("INSERT INTO match_groups (group_id, merged) VALUES (51, 1)")
+        conn.execute("INSERT INTO match_group_members (group_id, doc_id, similarity) VALUES (51, 'empty-doc', 0.9)")
+        conn.execute("INSERT INTO merge_results (group_id, merged_text, recovered_count) VALUES (51, '', 0)")
+        conn.commit()
+        conn.close()
+        test_config.db_path = str(mock_db)
+        unob = UnobInterface(test_config)
+        result = unob.get_member_text(51, "empty-doc")
+        assert result is not None
+        assert "No extracted text available" in result["text_html"]
+
+    def test_html_escaping(self, test_config, mock_db):
+        conn = sqlite3.connect(str(mock_db))
+        conn.execute("INSERT INTO documents (id, source, extracted_text, text_processed) VALUES ('xss-doc', 'test', '<script>alert(1)</script> safe text', 1)")
+        conn.execute("INSERT INTO match_groups (group_id, merged) VALUES (52, 1)")
+        conn.execute("INSERT INTO match_group_members (group_id, doc_id, similarity) VALUES (52, 'xss-doc', 0.9)")
+        conn.execute("INSERT INTO merge_results (group_id, merged_text, recovered_count) VALUES (52, '', 0)")
+        conn.commit()
+        conn.close()
+        test_config.db_path = str(mock_db)
+        unob = UnobInterface(test_config)
+        result = unob.get_member_text(52, "xss-doc")
+        assert "<script>" not in result["text_html"]
+        assert "&lt;script&gt;" in result["text_html"]
+
+    def test_truncation_over_100kb(self, test_config, mock_db):
+        big_text = "word " * 25000
+        conn = sqlite3.connect(str(mock_db))
+        conn.execute("INSERT INTO documents (id, source, extracted_text, text_processed) VALUES ('big-doc', 'test', ?, 1)", (big_text,))
+        conn.execute("INSERT INTO match_groups (group_id, merged) VALUES (53, 1)")
+        conn.execute("INSERT INTO match_group_members (group_id, doc_id, similarity) VALUES (53, 'big-doc', 0.9)")
+        conn.execute("INSERT INTO merge_results (group_id, merged_text, recovered_count) VALUES (53, '', 0)")
+        conn.commit()
+        conn.close()
+        test_config.db_path = str(mock_db)
+        unob = UnobInterface(test_config)
+        result = unob.get_member_text(53, "big-doc")
+        assert "Showing first" in result["text_html"]
+        assert len(result["text_html"]) > 90_000
+        assert len(result["text_html"]) < 110_000
+
+    def test_whitespace_normalized_match(self, test_config, mock_db):
+        conn = sqlite3.connect(str(mock_db))
+        conn.execute("INSERT INTO documents (id, source, extracted_text, text_processed) VALUES ('ws-doc', 'test', 'hello   world  foo   bar', 1)")
+        conn.execute("INSERT INTO match_groups (group_id, merged) VALUES (55, 1)")
+        conn.execute("INSERT INTO match_group_members (group_id, doc_id, similarity) VALUES (55, 'ws-doc', 0.9)")
+        segments = json.dumps([{"source_doc_id": "other", "text": "hello world"}])
+        conn.execute("INSERT INTO merge_results (group_id, merged_text, recovered_count, recovered_segments) VALUES (55, '', 1, ?)", (segments,))
+        conn.commit()
+        conn.close()
+        test_config.db_path = str(mock_db)
+        unob = UnobInterface(test_config)
+        result = unob.get_member_text(55, "ws-doc")
+        assert '<mark class="recovered-inline">' in result["text_html"]
+        assert "hello world" in result["text_html"]
+
+    def test_multiple_occurrences_all_highlighted(self, test_config, mock_db):
+        conn = sqlite3.connect(str(mock_db))
+        conn.execute("INSERT INTO documents (id, source, extracted_text, text_processed) VALUES ('multi-doc', 'test', 'hello world then hello world again', 1)")
+        conn.execute("INSERT INTO match_groups (group_id, merged) VALUES (56, 1)")
+        conn.execute("INSERT INTO match_group_members (group_id, doc_id, similarity) VALUES (56, 'multi-doc', 0.9)")
+        segments = json.dumps([{"source_doc_id": "other", "text": "hello world"}])
+        conn.execute("INSERT INTO merge_results (group_id, merged_text, recovered_count, recovered_segments) VALUES (56, '', 1, ?)", (segments,))
+        conn.commit()
+        conn.close()
+        test_config.db_path = str(mock_db)
+        unob = UnobInterface(test_config)
+        result = unob.get_member_text(56, "multi-doc")
+        mark_count = result["text_html"].count('<mark class="recovered-inline">')
+        assert mark_count == 2
+
+    def test_overlapping_segments_merged(self, test_config, mock_db):
+        conn = sqlite3.connect(str(mock_db))
+        conn.execute("INSERT INTO documents (id, source, extracted_text, text_processed) VALUES ('overlap-doc', 'test', 'ABCDEFGHIJ', 1)")
+        conn.execute("INSERT INTO match_groups (group_id, merged) VALUES (54, 1)")
+        conn.execute("INSERT INTO match_group_members (group_id, doc_id, similarity) VALUES (54, 'overlap-doc', 0.9)")
+        segments = json.dumps([{"source_doc_id": "other", "text": "BCDEF"}, {"source_doc_id": "other", "text": "DEFGH"}])
+        conn.execute("INSERT INTO merge_results (group_id, merged_text, recovered_count, recovered_segments) VALUES (54, '', 2, ?)", (segments,))
+        conn.commit()
+        conn.close()
+        test_config.db_path = str(mock_db)
+        unob = UnobInterface(test_config)
+        result = unob.get_member_text(54, "overlap-doc")
+        mark_count = result["text_html"].count('<mark class="recovered-inline">')
+        assert mark_count == 1
+        assert "BCDEFGH" in result["text_html"]
