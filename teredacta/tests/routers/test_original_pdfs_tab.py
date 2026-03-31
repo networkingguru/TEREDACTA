@@ -335,6 +335,64 @@ class TestEmbedViewer:
         assert "resize" in resp.text
 
 
+class TestTextPaneRendering:
+    """Tests for text mode in the Original Documents tab."""
+
+    def test_email_members_get_text_panes(self, client, tmp_dir, mock_db):
+        """Email-only members should get text pane placeholders, not 'No PDF' messages."""
+        _seed_recovery_with_email(tmp_dir, mock_db)
+        resp = client.get("/recoveries/1/tab/original-pdfs")
+        assert resp.status_code == 200
+        assert "No PDF available" not in resp.text
+        assert "member-text" in resp.text
+
+    def test_primary_pane_has_data_doc_id(self, client, tmp_dir, mock_db):
+        _seed_recovery(tmp_dir, mock_db)
+        resp = client.get("/recoveries/1/tab/original-pdfs")
+        assert resp.status_code == 200
+        assert 'data-doc-id="test-doc-0"' in resp.text
+
+    def test_primary_pane_has_data_pdf_path(self, client, tmp_dir, mock_db):
+        _seed_recovery(tmp_dir, mock_db)
+        resp = client.get("/recoveries/1/tab/original-pdfs")
+        assert resp.status_code == 200
+        assert 'data-pdf-path="TestBatch/doc1.pdf"' in resp.text
+
+    def test_pdf_mode_still_renders_iframes(self, client, tmp_dir, mock_db):
+        _seed_recovery(tmp_dir, mock_db)
+        resp = client.get("/recoveries/1/tab/original-pdfs")
+        assert resp.status_code == 200
+        assert "iframe" in resp.text
+        assert "/pdf/embed?" in resp.text
+
+    def test_two_email_members_both_get_text_panes(self, client, tmp_dir, mock_db):
+        import json as _json
+        conn = sqlite3.connect(str(mock_db))
+        for i in range(2):
+            conn.execute(
+                "INSERT INTO documents (id, source, extracted_text, text_processed, text_source) "
+                "VALUES (?, 'test', 'email text', 1, 'jmail')",
+                (f"email-doc-{i}",),
+            )
+        conn.execute("INSERT INTO match_groups (group_id, merged) VALUES (1, 1)")
+        for i in range(2):
+            conn.execute(
+                "INSERT INTO match_group_members (group_id, doc_id, similarity) VALUES (1, ?, ?)",
+                (f"email-doc-{i}", 0.95 - i * 0.05),
+            )
+        conn.execute(
+            "INSERT INTO merge_results (group_id, merged_text, recovered_count, source_doc_ids) "
+            "VALUES (1, 'email text', 1, ?)",
+            (_json.dumps(["email-doc-0", "email-doc-1"]),),
+        )
+        conn.commit()
+        conn.close()
+        resp = client.get("/recoveries/1/tab/original-pdfs")
+        assert resp.status_code == 200
+        assert "No PDF available" not in resp.text
+        assert resp.text.count("member-text") >= 2
+
+
 class TestSideBySideCSS:
     """Verify the CSS supports side-by-side and single-view modes."""
 
