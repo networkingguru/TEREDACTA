@@ -150,6 +150,7 @@ class TestGetMemberText:
         result = unob.get_member_text(53, "big-doc")
         assert "Showing first" in result["text_html"]
         # Should be roughly 100KB, not the full 125KB
+        assert len(result["text_html"]) > 90_000
         assert len(result["text_html"]) < 110_000
 
     def test_whitespace_normalized_match(self, test_config, mock_db):
@@ -305,7 +306,7 @@ Add this method to the `UnobInterface` class, after `get_source_context` (after 
             # First try exact matches. If any segment fails exact match,
             # normalize the entire text once and retry all segments.
             ranges = []
-            unmatched = []
+            unmatched = set()
             for seg_text in segments:
                 pos = extracted.find(seg_text)
                 if pos >= 0:
@@ -316,7 +317,7 @@ Add this method to the `UnobInterface` class, after `get_source_context` (after 
                         ranges.append((pos, pos + len(seg_text)))
                         pos = extracted.find(seg_text, pos + len(seg_text))
                 else:
-                    unmatched.append(seg_text)
+                    unmatched.add(seg_text)
 
             # Retry unmatched segments with whitespace normalization
             if unmatched:
@@ -665,9 +666,7 @@ Replace the full content of `teredacta/templates/recoveries/tabs/original_pdfs.h
     {% set primary = recovery.members[0] %}
     <div class="pdf-pane" id="primary-pane" data-doc-id="{{ primary.doc_id }}" data-pdf-path="{{ primary.pdf_cache_path or '' }}">
         <h4>{{ primary.doc_id }}</h4>
-        {% if primary.pdf_cache_path and recovery.members|length > 1 and recovery.members[1].pdf_cache_path %}
-        <iframe src="/pdf/embed?type=cache&path={{ primary.pdf_cache_path | urlencode }}" style="width:100%;height:600px;border:none;background:#525659;"></iframe>
-        {% elif primary.pdf_cache_path and recovery.members|length <= 1 %}
+        {% if primary.pdf_cache_path and (recovery.members|length <= 1 or recovery.members[1].pdf_cache_path) %}
         <iframe src="/pdf/embed?type=cache&path={{ primary.pdf_cache_path | urlencode }}" style="width:100%;height:600px;border:none;background:#525659;"></iframe>
         {% else %}
         <div class="log-viewer" id="primary-text" style="max-height:600px;font-size:0.85rem;line-height:1.7;">Loading...</div>
@@ -785,7 +784,7 @@ Replace the full content of `teredacta/templates/recoveries/tabs/original_pdfs.h
         loadText(document.getElementById('primary-pane'), primaryDocId);
     }
     if (document.getElementById('donor-text')) {
-        var donorDocId = document.getElementById('donor-pane').dataset.docId || '{{ recovery.members[1].doc_id if recovery.members|length > 1 else "" }}';
+        var donorDocId = document.getElementById('donor-pane').dataset.docId;
         loadText(document.getElementById('donor-pane'), donorDocId);
     }
 })();
