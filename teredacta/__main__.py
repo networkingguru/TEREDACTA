@@ -1,11 +1,49 @@
+import logging
 import os
 import signal
 import sys
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import click
 
 _DEFAULT_PID_FILE = "/tmp/teredacta.pid"
 _DEFAULT_LOG_FILE = "/tmp/teredacta.log"
+
+
+def setup_logging(cfg):
+    """Configure Python logging from TeredactaConfig. Idempotent."""
+    level = getattr(logging, cfg.log_level.upper(), logging.INFO)
+    root = logging.getLogger()
+    root.setLevel(level)
+
+    for h in root.handlers[:]:
+        root.removeHandler(h)
+        h.close()
+
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+
+    stderr_handler = logging.StreamHandler(sys.stderr)
+    stderr_handler.setFormatter(fmt)
+    root.addHandler(stderr_handler)
+
+    if cfg.log_path:
+        file_handler = RotatingFileHandler(
+            cfg.log_path, maxBytes=10_485_760, backupCount=5
+        )
+        file_handler.setFormatter(fmt)
+        root.addHandler(file_handler)
+
+    _original_excepthook = sys.excepthook
+
+    def _exception_handler(exc_type, exc_value, exc_tb):
+        if issubclass(exc_type, KeyboardInterrupt):
+            _original_excepthook(exc_type, exc_value, exc_tb)
+            return
+        logging.getLogger("teredacta").critical(
+            "Uncaught exception", exc_info=(exc_type, exc_value, exc_tb)
+        )
+
+    sys.excepthook = _exception_handler
 
 
 def _load_and_patch_cfg(config_path, host, port):
@@ -47,6 +85,7 @@ def run(host, port, config_path, workers_override):
     import uvicorn
 
     cfg = _load_and_patch_cfg(config_path, host, port)
+    setup_logging(cfg)
     if workers_override:
         cfg.workers = workers_override
     if cfg.workers < 1:
@@ -65,11 +104,11 @@ def run(host, port, config_path, workers_override):
             os.environ["_TEREDACTA_HOST"] = host
         if port:
             os.environ["_TEREDACTA_PORT"] = str(port)
-        uvicorn.run("teredacta._app_factory:app", host=cfg.host, port=cfg.port, workers=cfg.workers)
+        uvicorn.run("teredacta._app_factory:app", host=cfg.host, port=cfg.port, workers=cfg.workers, log_config=None)
     else:
         from teredacta.app import create_app
         app = create_app(cfg)
-        uvicorn.run(app, host=cfg.host, port=cfg.port)
+        uvicorn.run(app, host=cfg.host, port=cfg.port, log_config=None)
 
 
 @cli.command()
@@ -122,6 +161,7 @@ def start(host, port, config_path, pid_file, log_file):
     os.dup2(devnull, sys.stdin.fileno())
     os.close(devnull)
     os.setsid()
+    setup_logging(cfg)
     import atexit
     _daemon_pid = os.getpid()
     atexit.register(lambda: os.getpid() == _daemon_pid and os.path.exists(pid_file) and os.remove(pid_file))
@@ -131,11 +171,11 @@ def start(host, port, config_path, pid_file, log_file):
 
     import uvicorn
     if cfg.workers > 1:
-        uvicorn.run("teredacta._app_factory:app", host=cfg.host, port=cfg.port, workers=cfg.workers)
+        uvicorn.run("teredacta._app_factory:app", host=cfg.host, port=cfg.port, workers=cfg.workers, log_config=None)
     else:
         from teredacta.app import create_app
         app = create_app(cfg)
-        uvicorn.run(app, host=cfg.host, port=cfg.port)
+        uvicorn.run(app, host=cfg.host, port=cfg.port, log_config=None)
 
 
 @cli.command()
