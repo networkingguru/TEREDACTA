@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 import logging
+import time
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -45,10 +46,12 @@ def create_app(config: TeredactaConfig) -> FastAPI:
         response = await call_next(request)
         return response
 
-    from teredacta.routers import dashboard, documents, groups, recoveries, pdf, queue, summary, admin, explore, highlights, api
+    from teredacta.routers import dashboard, documents, groups, recoveries, pdf, queue, summary, admin, explore, highlights, api, health
 
     # SSE at root (admin-only, guarded in dashboard.py)
     app.include_router(dashboard.sse_router)
+    app.include_router(health.router, prefix="/health")
+    app.state.startup_time = time.monotonic()
 
     # API endpoints (HTML fragments)
     app.include_router(api.router, prefix="/api")
