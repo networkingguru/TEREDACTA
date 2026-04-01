@@ -87,3 +87,14 @@ class ConnectionPool:
                 conn.close()
             except queue.Empty:
                 break
+
+    def pool_status(self) -> dict:
+        """Return pool metrics without acquiring a connection.
+
+        Reads _size and _pool.qsize() which are approximate under
+        contention (CPython GIL makes individual reads atomic, but the
+        pair is not a snapshot). Acceptable for health monitoring.
+        """
+        idle = self._pool.qsize()
+        size = self._size
+        return {"idle": idle, "in_use": max(0, size - idle), "capacity": self._max_size}

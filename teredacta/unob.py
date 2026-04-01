@@ -142,6 +142,12 @@ class UnobInterface:
         else:
             conn.close()
 
+    def pool_status(self) -> dict | None:
+        """Return DB pool metrics, or None if pool not yet initialized."""
+        if self._pool is None:
+            return None
+        return self._pool.pool_status()
+
     def close(self):
         if self._pool:
             self._pool.close()
