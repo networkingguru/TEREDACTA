@@ -104,4 +104,7 @@ def create_app(config: TeredactaConfig) -> FastAPI:
             status_code=503,
         )
 
+    from teredacta.timeout_middleware import RequestTimeoutMiddleware
+    app.add_middleware(RequestTimeoutMiddleware, timeout_seconds=120.0)
+
     return app
