@@ -99,11 +99,14 @@ class AdmissionState:
         return self._tickets.get(ticket_id)
 
     def ticket_position(self, ticket_id: str) -> int:
-        """Return 1-based position in queue, or 0 if not found."""
-        for i, t in enumerate(self._queue):
+        """Return count of unready tickets ahead in queue, or 0 if not found."""
+        count = 0
+        for t in self._queue:
             if t.id == ticket_id:
-                return i + 1
-        return 0
+                return count
+            if not t.ready:
+                count += 1
+        return 0  # not found
 
     def complete_request(self, started_at: float):
         """Called when a request finishes. Transfers slot or releases semaphore."""
@@ -180,6 +183,9 @@ class AdmissionMiddleware:
                 return
 
         # Try to acquire a slot
+        # asyncio.Semaphore.acquire() completes synchronously when _value > 0
+        # (no suspension point), so this check-then-acquire is safe under
+        # CPython's cooperative asyncio model.
         if self.state.semaphore._value > 0:
             await self.state.semaphore.acquire()
             started_at = time.monotonic()

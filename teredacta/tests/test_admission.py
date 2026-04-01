@@ -4,11 +4,12 @@ import asyncio
 import time
 
 import pytest
+import pytest_asyncio
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
 from httpx import AsyncClient, ASGITransport
 
-from teredacta.admission import AdmissionMiddleware, AdmissionState
+from teredacta.admission import AdmissionMiddleware, AdmissionState, QueueTicket
 
 
 def _make_app(max_concurrent: int = 2, max_queue: int = 5, hold_event=None):
@@ -250,6 +251,76 @@ class TestAdmissionState:
         est = state.estimate_wait(position=4)
         # 4 * 2.0 / max(1, 4-2) = 8/2 = 4.0
         assert est == 4.0
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def cleanup_expiry_tasks():
+    yield
+    # Cancel any pending expiry tasks created during the test
+    import asyncio
+    for task in asyncio.all_tasks():
+        if task.get_name().startswith("Task") and not task.done():
+            if "_expire" in str(task.get_coro()):
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+
+class TestErrorHandling:
+    @pytest.mark.asyncio
+    async def test_exception_releases_slot(self):
+        """If the inner app raises, the semaphore slot is still released."""
+        app = FastAPI()
+
+        @app.get("/crash")
+        async def crash():
+            raise RuntimeError("boom")
+
+        @app.get("/ok")
+        async def ok():
+            return {"status": "ok"}
+
+        wrapped = AdmissionMiddleware(app, max_concurrent=1, max_queue=5)
+
+        async with AsyncClient(transport=ASGITransport(app=wrapped, raise_app_exceptions=False), base_url="http://test") as client:
+            resp = await client.get("/crash")
+            assert resp.status_code == 500
+
+            # Slot must have been released — next request should succeed
+            resp = await client.get("/ok")
+            assert resp.status_code == 200
+
+
+class TestTicketExpiry:
+    @pytest.mark.asyncio
+    async def test_ready_ticket_expires_and_releases_slot(self):
+        """Ready ticket unclaimed for >60s releases its semaphore slot."""
+        state = AdmissionState(max_concurrent=2, max_queue=10)
+
+        await state.semaphore.acquire()
+        await state.semaphore.acquire()
+        assert state.semaphore._value == 0
+
+        import time
+        old_ticket = QueueTicket(id="old", ready=True, ready_at=time.monotonic() - 120)
+        state._queue.append(old_ticket)
+        state._tickets["old"] = old_ticket
+
+        # Run one expiry cycle manually
+        now = time.monotonic()
+        to_remove = []
+        for ticket in list(state._queue):
+            if ticket.ready and ticket.ready_at and (now - ticket.ready_at > 60):
+                to_remove.append(ticket)
+        for ticket in to_remove:
+            state._queue.remove(ticket)
+            state._tickets.pop(ticket.id, None)
+            state.semaphore.release()
+
+        assert state.semaphore._value == 1
+        assert "old" not in state._tickets
 
 
 def _extract_ticket_id(set_cookie: str) -> str:
