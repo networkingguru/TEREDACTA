@@ -204,3 +204,30 @@ def app_with_entities(test_config, entity_index, entity_db_path):
 def client_with_entities(app_with_entities):
     """TestClient with entity index available."""
     return TestClient(app_with_entities)
+
+
+# ---------------------------------------------------------------------------
+# Stress test fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def stress_db(mock_db):
+    """Reuse mock_db schema with optional seed data for stress tests."""
+    return mock_db
+
+
+@pytest.fixture
+def stress_app(tmp_dir, stress_db):
+    """App for stress tests using the shared mock_db schema."""
+    cfg = TeredactaConfig(
+        unobfuscator_path=str(tmp_dir),
+        unobfuscator_bin="echo",
+        db_path=str(stress_db),
+        pdf_cache_dir=str(tmp_dir / "pdf_cache"),
+        output_dir=str(tmp_dir / "output"),
+        log_path=str(tmp_dir / "unobfuscator.log"),
+        host="127.0.0.1",
+        port=8000,
+    )
+    from teredacta.app import create_app
+    return create_app(cfg)
