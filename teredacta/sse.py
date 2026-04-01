@@ -16,6 +16,10 @@ class SSEManager:
         self._task: Optional[asyncio.Task] = None
         self._last_stats: Optional[dict] = None
 
+    @property
+    def subscriber_count(self) -> int:
+        return len(self._subscribers)
+
     def subscribe(self) -> asyncio.Queue:
         queue = asyncio.Queue(maxsize=100)
         self._subscribers.add(queue)
