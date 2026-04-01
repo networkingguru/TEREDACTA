@@ -27,6 +27,8 @@ class TeredactaConfig:
     session_timeout_minutes: int = 60
     sse_poll_interval_seconds: int = 2
     subprocess_timeout_seconds: int = 60
+    health_pool_degraded_threshold: int = 3  # idle+uncreated <= this = degraded
+    health_sse_degraded_threshold: int = 20  # subscribers >= this = degraded
     # NOTE: Default generates a random key on every process start, which
     # invalidates all existing sessions on restart. Persist a secret_key in
     # your config file (teredacta.yaml) to preserve sessions across restarts.
