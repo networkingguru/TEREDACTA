@@ -23,7 +23,12 @@ dependencies = [
 dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
+    "pytest-timeout>=2.2.0",
     "httpx>=0.25.0",
+]
+stress = [
+    "locust>=2.20.0",
+    "sseclient-py>=1.8.0",
 ]
 
 [project.scripts]
@@ -31,3 +36,10 @@ teredacta = "teredacta.__main__:cli"
 
 [tool.setuptools.packages.find]
 include = ["teredacta*"]
+
+[tool.pytest.ini_options]
+markers = [
+    "stress: stress tests (deselected by default, run with: pytest -m stress)",
+]
+addopts = "-m 'not stress'"
+asyncio_mode = "strict"
