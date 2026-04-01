@@ -9,6 +9,16 @@ from fastapi.templating import Jinja2Templates
 from starlette.responses import HTMLResponse
 
 logger = logging.getLogger(__name__)
+
+
+class _HealthLogFilter(logging.Filter):
+    """Suppress access log entries for /health/* requests."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        if " /health/" in msg:
+            return False
+        return True
 from teredacta.auth import AuthManager
 from teredacta.config import TeredactaConfig
 from teredacta.entity_index import EntityIndex
@@ -19,6 +29,10 @@ def create_app(config: TeredactaConfig) -> FastAPI:
     async def lifespan(application: FastAPI):
         yield
         application.state.unob.close()
+
+    _access_logger = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, _HealthLogFilter) for f in _access_logger.filters):
+        _access_logger.addFilter(_HealthLogFilter())
 
     app = FastAPI(title="TEREDACTA", docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.config = config
