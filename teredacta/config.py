@@ -23,7 +23,7 @@ class TeredactaConfig:
     port: int = 8000
     admin_password_hash: Optional[str] = None
     log_level: str = "info"
-    workers: int = 1
+    workers: int = 4
     session_timeout_minutes: int = 60
     sse_poll_interval_seconds: int = 2
     subprocess_timeout_seconds: int = 60

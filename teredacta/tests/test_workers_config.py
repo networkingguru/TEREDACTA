@@ -1,8 +1,8 @@
 from teredacta.config import TeredactaConfig
 
-def test_default_workers_is_1():
+def test_default_workers_is_4():
     cfg = TeredactaConfig()
-    assert cfg.workers == 1
+    assert cfg.workers == 4
 
 def test_workers_from_init():
     cfg = TeredactaConfig(workers=4)

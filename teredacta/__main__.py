@@ -98,9 +98,13 @@ def start(host, port, config_path, pid_file, log_file):
     cfg = _load_and_patch_cfg(config_path, host, port)
 
     if cfg.workers > 1:
-        click.echo("Error: Multi-worker mode is not supported with 'teredacta start'.")
-        click.echo("Use systemd or 'teredacta run --workers N' instead.")
-        sys.exit(1)
+        # Multi-worker requires import string. Pass config via env.
+        os.environ["_TEREDACTA_CONFIG_PATH"] = config_path or ""
+        os.environ["_TEREDACTA_SECRET_KEY"] = cfg.secret_key
+        if host:
+            os.environ["_TEREDACTA_HOST"] = host
+        if port:
+            os.environ["_TEREDACTA_PORT"] = str(port)
 
     pid = os.fork()
     if pid > 0:
@@ -124,10 +128,13 @@ def start(host, port, config_path, pid_file, log_file):
         os.dup2(log.fileno(), sys.stdout.fileno())
         os.dup2(log.fileno(), sys.stderr.fileno())
 
-    from teredacta.app import create_app
     import uvicorn
-    app = create_app(cfg)
-    uvicorn.run(app, host=cfg.host, port=cfg.port)
+    if cfg.workers > 1:
+        uvicorn.run("teredacta._app_factory:app", host=cfg.host, port=cfg.port, workers=cfg.workers)
+    else:
+        from teredacta.app import create_app
+        app = create_app(cfg)
+        uvicorn.run(app, host=cfg.host, port=cfg.port)
 
 
 @cli.command()
