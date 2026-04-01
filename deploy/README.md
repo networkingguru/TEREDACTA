@@ -65,3 +65,29 @@ Set admin password via environment variable:
 ```bash
 export TEREDACTA_ADMIN_PASSWORD=your-secure-password
 ```
+
+## Health Checks
+
+TEREDACTA exposes health endpoints for monitoring:
+
+- `GET /health/live` — Liveness probe (event loop alive?)
+- `GET /health/ready` — Readiness probe (DB pool, SSE status)
+
+### Caddy Health Check
+
+Add to your Caddyfile reverse_proxy block:
+
+```
+reverse_proxy localhost:8000 {
+    health_uri /health/live
+    health_interval 5s
+}
+```
+
+This lets Caddy detect and route around unresponsive workers.
+
+### External Monitoring
+
+Point your monitoring tool (UptimeRobot, Healthchecks.io, etc.) at:
+- Liveness: `https://your-domain.com/health/live`
+- Readiness: `https://your-domain.com/health/ready`
