@@ -14,7 +14,7 @@ class TestAdminLogin:
 
     def test_login_wrong_password_returns_401(self, app):
         """POST /admin/login with wrong password → 401."""
-        app.state.config.admin_password_hash = bcrypt.hashpw(b"correct", bcrypt.gensalt()).decode()
+        app.app.state.config.admin_password_hash = bcrypt.hashpw(b"correct", bcrypt.gensalt()).decode()
         c = TestClient(app, raise_server_exceptions=True)
         resp = c.post("/admin/login", data={"password": "wrong"})
         assert resp.status_code == 401
@@ -22,7 +22,7 @@ class TestAdminLogin:
 
     def test_login_correct_password_redirects(self, app):
         """POST /admin/login with correct password → 303 redirect."""
-        app.state.config.admin_password_hash = bcrypt.hashpw(b"correct", bcrypt.gensalt()).decode()
+        app.app.state.config.admin_password_hash = bcrypt.hashpw(b"correct", bcrypt.gensalt()).decode()
         c = TestClient(app, raise_server_exceptions=True, follow_redirects=False)
         resp = c.post("/admin/login", data={"password": "correct"})
         assert resp.status_code == 303
@@ -90,7 +90,7 @@ class TestAdminEntityIndex:
         from fastapi.testclient import TestClient
         # Force admin_requires_login by setting a password hash
         import bcrypt
-        app.state.config.admin_password_hash = bcrypt.hashpw(b"secret", bcrypt.gensalt()).decode()
+        app.app.state.config.admin_password_hash = bcrypt.hashpw(b"secret", bcrypt.gensalt()).decode()
         c = TestClient(app)
         resp = c.post("/admin/entity-index/build")
         assert resp.status_code == 403

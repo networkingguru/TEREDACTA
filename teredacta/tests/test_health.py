@@ -164,7 +164,7 @@ class TestHealthEndpoints:
         assert data["checks"]["db_pool"]["status"] == "ok"
 
     def test_readiness_returns_503_when_unhealthy(self, health_client):
-        app = health_client.app
+        app = health_client.app.app
         unob = app.state.unob
         conns = []
         for _ in range(8):
@@ -179,7 +179,7 @@ class TestHealthEndpoints:
             unob._release_db(c)
 
     def test_liveness_works_when_readiness_unhealthy(self, health_client):
-        app = health_client.app
+        app = health_client.app.app
         unob = app.state.unob
         conns = [unob._get_db() for _ in range(8)]
         assert health_client.get("/health/ready").status_code == 503

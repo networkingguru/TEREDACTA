@@ -36,28 +36,28 @@ def create_app(config: TeredactaConfig) -> FastAPI:
     if not any(isinstance(f, _HealthLogFilter) for f in _access_logger.filters):
         _access_logger.addFilter(_HealthLogFilter())
 
-    app = FastAPI(title="TEREDACTA", docs_url=None, redoc_url=None, lifespan=lifespan)
-    app.state.config = config
-    app.state.unob = UnobInterface(config)
-    app.state.unob.ensure_indexes()
-    app.state.auth = AuthManager(config)
-    app.state.entity_index = EntityIndex(config.entity_db_path)
+    fastapi_app = FastAPI(title="TEREDACTA", docs_url=None, redoc_url=None, lifespan=lifespan)
+    fastapi_app.state.config = config
+    fastapi_app.state.unob = UnobInterface(config)
+    fastapi_app.state.unob.ensure_indexes()
+    fastapi_app.state.auth = AuthManager(config)
+    fastapi_app.state.entity_index = EntityIndex(config.entity_db_path)
 
     from teredacta.sse import SSEManager
-    app.state.sse = SSEManager(poll_interval=config.sse_poll_interval_seconds, unob=app.state.unob, max_subscribers=config.max_sse_subscribers)
+    fastapi_app.state.sse = SSEManager(poll_interval=config.sse_poll_interval_seconds, unob=fastapi_app.state.unob, max_subscribers=config.max_sse_subscribers)
 
     static_dir = Path(__file__).parent / "static"
     if static_dir.exists():
-        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+        fastapi_app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     template_dir = Path(__file__).parent / "templates"
     templates = Jinja2Templates(directory=str(template_dir))
-    app.state.templates = templates
+    fastapi_app.state.templates = templates
 
-    @app.middleware("http")
+    @fastapi_app.middleware("http")
     async def add_template_context(request: Request, call_next):
-        request.state.is_admin = app.state.auth.is_admin(request)
-        request.state.csrf_token = app.state.auth.get_csrf_token(request)
+        request.state.is_admin = fastapi_app.state.auth.is_admin(request)
+        request.state.csrf_token = fastapi_app.state.auth.get_csrf_token(request)
         request.state.config = config
         response = await call_next(request)
         return response
@@ -65,36 +65,36 @@ def create_app(config: TeredactaConfig) -> FastAPI:
     from teredacta.routers import dashboard, documents, groups, recoveries, pdf, queue, summary, admin, explore, highlights, api, health
 
     # SSE at root (admin-only, guarded in dashboard.py)
-    app.include_router(dashboard.sse_router)
-    app.include_router(health.router, prefix="/health")
-    app.state.startup_time = time.monotonic()
+    fastapi_app.include_router(dashboard.sse_router)
+    fastapi_app.include_router(health.router, prefix="/health")
+    fastapi_app.state.startup_time = time.monotonic()
 
     # API endpoints (HTML fragments)
-    app.include_router(api.router, prefix="/api")
+    fastapi_app.include_router(api.router, prefix="/api")
 
     # Public pages
-    app.include_router(explore.router)
-    app.include_router(highlights.router, prefix="/highlights")
-    app.include_router(documents.router, prefix="/documents")
-    app.include_router(recoveries.router, prefix="/recoveries")
-    app.include_router(pdf.router, prefix="/pdf")
-    app.include_router(summary.router, prefix="/summary")
+    fastapi_app.include_router(explore.router)
+    fastapi_app.include_router(highlights.router, prefix="/highlights")
+    fastapi_app.include_router(documents.router, prefix="/documents")
+    fastapi_app.include_router(recoveries.router, prefix="/recoveries")
+    fastapi_app.include_router(pdf.router, prefix="/pdf")
+    fastapi_app.include_router(summary.router, prefix="/summary")
 
     # Admin pages
-    app.include_router(admin.router, prefix="/admin")
-    app.include_router(groups.router, prefix="/admin/groups")
-    app.include_router(queue.router, prefix="/admin/queue")
+    fastapi_app.include_router(admin.router, prefix="/admin")
+    fastapi_app.include_router(groups.router, prefix="/admin/groups")
+    fastapi_app.include_router(queue.router, prefix="/admin/queue")
 
     # Redirects for old URLs
-    @app.get("/groups/{path:path}")
+    @fastapi_app.get("/groups/{path:path}")
     def redirect_groups(path: str):
         return RedirectResponse(f"/admin/groups/{path}", status_code=301)
 
-    @app.get("/queue/{path:path}")
+    @fastapi_app.get("/queue/{path:path}")
     def redirect_queue(path: str):
         return RedirectResponse(f"/admin/queue/{path}", status_code=301)
 
-    @app.exception_handler(FileNotFoundError)
+    @fastapi_app.exception_handler(FileNotFoundError)
     async def db_not_found_handler(request: Request, exc: FileNotFoundError):
         logger.error("FileNotFoundError: %s", exc)
         return templates.TemplateResponse(
@@ -105,6 +105,13 @@ def create_app(config: TeredactaConfig) -> FastAPI:
         )
 
     from teredacta.timeout_middleware import RequestTimeoutMiddleware
-    app.add_middleware(RequestTimeoutMiddleware, timeout_seconds=120.0)
+    fastapi_app.add_middleware(RequestTimeoutMiddleware, timeout_seconds=120.0)
+
+    from teredacta.admission import AdmissionMiddleware
+    app = AdmissionMiddleware(
+        fastapi_app,
+        max_concurrent=config.max_concurrent_requests,
+        max_queue=config.max_queue_size,
+    )
 
     return app

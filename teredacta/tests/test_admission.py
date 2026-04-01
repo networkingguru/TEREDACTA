@@ -323,6 +323,18 @@ class TestTicketExpiry:
         assert "old" not in state._tickets
 
 
+class TestAdmissionIntegration:
+    def test_queue_status_responds(self, test_config):
+        from teredacta.app import create_app
+        from fastapi.testclient import TestClient
+        app = create_app(test_config)
+        client = TestClient(app)
+        resp = client.get("/_queue/status?ticket=nonexistent")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["requeue"] is True
+
+
 def _extract_ticket_id(set_cookie: str) -> str:
     """Extract _queue_ticket value from Set-Cookie header."""
     for part in set_cookie.split(";"):

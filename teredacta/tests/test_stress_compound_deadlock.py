@@ -98,7 +98,7 @@ class TestCompoundDeadlock:
     @pytest.mark.asyncio
     async def test_health_reports_degraded_during_contention(self, stress_app):
         """Health endpoint reports correct status during compound contention."""
-        unob = stress_app.state.unob
+        unob = stress_app.app.state.unob
 
         # Force pool creation by making a query
         conn = unob._get_db()

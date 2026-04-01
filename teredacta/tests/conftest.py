@@ -196,7 +196,7 @@ def app_with_entities(test_config, entity_index, entity_db_path):
     test_config.entity_db_path = entity_db_path
     from teredacta.app import create_app
     application = create_app(test_config)
-    application.state.entity_index = entity_index
+    application.app.state.entity_index = entity_index
     return application
 
 

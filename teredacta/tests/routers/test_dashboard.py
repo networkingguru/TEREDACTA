@@ -19,7 +19,7 @@ class TestDashboard:
 
     def test_sse_endpoint_no_sse(self, app, client):
         """When SSE manager is removed, endpoint returns 503."""
-        app.state.sse = None
+        app.app.state.sse = None
         resp = client.get("/sse/stats")
         assert resp.status_code == 503
 
