@@ -54,6 +54,8 @@ def create_app(config: TeredactaConfig) -> FastAPI:
     async def lifespan(application: FastAPI):
         yield
         application.state.unob.close()
+        if hasattr(application.state, "sse"):
+            application.state.sse.close()
 
     _access_logger = logging.getLogger("uvicorn.access")
     if not any(isinstance(f, _HealthLogFilter) for f in _access_logger.filters):

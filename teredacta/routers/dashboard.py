@@ -30,8 +30,10 @@ async def daemon_status_fragment(request: Request):
         return HTMLResponse("", status_code=403)
     unob = request.app.state.unob
     loop = asyncio.get_running_loop()
+    sse = getattr(request.app.state, "sse", None)
+    executor = sse.executor if sse else None
     try:
-        status = await loop.run_in_executor(None, unob.get_daemon_status)
+        status = await loop.run_in_executor(executor, unob.get_daemon_status)
     except Exception:
         status = "unknown"
     dot_class = "running" if status == "running" else "stopped"

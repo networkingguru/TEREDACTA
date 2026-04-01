@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from typing import AsyncGenerator, Optional, Set
 from teredacta.unob import UnobInterface
@@ -16,6 +17,7 @@ class SSEManager:
         self._subscribers: Set[asyncio.Queue] = set()
         self._task: Optional[asyncio.Task] = None
         self._last_stats: Optional[dict] = None
+        self.executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="sse")
 
     @property
     def subscriber_count(self) -> int:
@@ -50,7 +52,7 @@ class SSEManager:
                 if self.unob:
                     try:
                         data = await loop.run_in_executor(
-                            None, partial(self._fetch_sync, self.unob)
+                            self.executor, partial(self._fetch_sync, self.unob)
                         )
                         if data != self._last_stats:
                             self._last_stats = data
@@ -68,6 +70,10 @@ class SSEManager:
                 await asyncio.sleep(self.poll_interval)
         except asyncio.CancelledError:
             pass
+
+    def close(self):
+        """Shut down the dedicated thread pool."""
+        self.executor.shutdown(wait=False)
 
     async def event_generator(self, queue: asyncio.Queue) -> AsyncGenerator[str, None]:
         try:
