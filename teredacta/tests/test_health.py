@@ -205,8 +205,8 @@ class TestConfigFields:
         from teredacta.config import TeredactaConfig
         cfg = TeredactaConfig()
         assert cfg.max_pool_size == 32
-        assert cfg.max_concurrent_requests == 40
-        assert cfg.max_queue_size == 200
+        assert cfg.max_concurrent_requests == 80
+        assert cfg.max_queue_size == 500
         assert cfg.max_sse_subscribers == 50
 
     def test_config_loads_from_yaml(self, tmp_path):
@@ -216,7 +216,7 @@ class TestConfigFields:
         cfg = load_config(str(cfg_file))
         assert cfg.max_pool_size == 16
         assert cfg.max_concurrent_requests == 20
-        assert cfg.max_queue_size == 200  # default
+        assert cfg.max_queue_size == 500  # default
 
 
 class TestPoolSizeConfig:
