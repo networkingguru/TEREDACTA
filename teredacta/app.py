@@ -26,6 +26,29 @@ from teredacta.config import TeredactaConfig
 from teredacta.entity_index import EntityIndex
 from teredacta.unob import UnobInterface
 
+
+class _TemplateContextMiddleware:
+    """Pure ASGI middleware — sets request state without wrapping response.
+
+    Unlike BaseHTTPMiddleware (used by @app.middleware("http")), this is
+    safe with streaming responses (SSE) because it passes through without
+    intercepting the response stream.
+    """
+
+    def __init__(self, app, config=None, auth=None):
+        self.app = app
+        self.config = config
+        self.auth = auth
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            request = Request(scope)
+            request.state.is_admin = self.auth.is_admin(request)
+            request.state.csrf_token = self.auth.get_csrf_token(request)
+            request.state.config = self.config
+        await self.app(scope, receive, send)
+
+
 def create_app(config: TeredactaConfig) -> FastAPI:
     @asynccontextmanager
     async def lifespan(application: FastAPI):
@@ -54,13 +77,7 @@ def create_app(config: TeredactaConfig) -> FastAPI:
     templates = Jinja2Templates(directory=str(template_dir))
     fastapi_app.state.templates = templates
 
-    @fastapi_app.middleware("http")
-    async def add_template_context(request: Request, call_next):
-        request.state.is_admin = fastapi_app.state.auth.is_admin(request)
-        request.state.csrf_token = fastapi_app.state.auth.get_csrf_token(request)
-        request.state.config = config
-        response = await call_next(request)
-        return response
+    fastapi_app.add_middleware(_TemplateContextMiddleware, config=config, auth=fastapi_app.state.auth)
 
     from teredacta.routers import dashboard, documents, groups, recoveries, pdf, queue, summary, admin, explore, highlights, api, health
 
