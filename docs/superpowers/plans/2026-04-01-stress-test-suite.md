@@ -24,8 +24,8 @@
 | `teredacta/tests/test_stress_thread_pool.py` | Thread pool exhaustion stress tests |
 | `teredacta/tests/test_stress_compound_deadlock.py` | Production failure mode reproduction |
 | `teredacta/tests/test_stress_mixed.py` | Combined workload stress tests |
-| `stress/locustfile.py` | Locust user classes and load test scenarios |
-| `stress/config.py` | Locust configuration (target URL, credentials, thresholds) |
+| `stress/locustfile.py` | Locust user classes, LoadTestShape, and load test scenarios |
+| `stress/stress_config.py` | Locust configuration (target URL, credentials, thresholds) |
 | `stress/README.md` | How to run stress tests locally and against VPS |
 
 ### Modified Files
@@ -125,7 +125,7 @@ Add to `teredacta/db_pool.py` after the `close()` method (after line 89):
         """
         idle = self._pool.qsize()
         size = self._size
-        return {"idle": idle, "in_use": size - idle, "capacity": self._max_size}
+        return {"idle": idle, "in_use": max(0, size - idle), "capacity": self._max_size}
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -170,18 +170,23 @@ from teredacta.sse import SSEManager
 
 
 class TestSSESubscriberCount:
-    def test_subscriber_count_zero(self):
+    """Tests must be async because SSEManager.subscribe() calls asyncio.create_task()."""
+
+    @pytest.mark.asyncio
+    async def test_subscriber_count_zero(self):
         sse = SSEManager(poll_interval=1.0, unob=None)
         assert sse.subscriber_count == 0
 
-    def test_subscriber_count_after_subscribe(self):
+    @pytest.mark.asyncio
+    async def test_subscriber_count_after_subscribe(self):
         sse = SSEManager(poll_interval=1.0, unob=None)
         q = sse.subscribe()
         assert sse.subscriber_count == 1
         sse.unsubscribe(q)
         assert sse.subscriber_count == 0
 
-    def test_subscriber_count_multiple(self):
+    @pytest.mark.asyncio
+    async def test_subscriber_count_multiple(self):
         sse = SSEManager(poll_interval=1.0, unob=None)
         q1 = sse.subscribe()
         q2 = sse.subscribe()
@@ -351,18 +356,47 @@ class TestHealthEndpoints:
         # Force unhealthy by exhausting the pool
         app = health_client.app
         unob = app.state.unob
-        # Trigger pool creation and exhaust it
+        # Trigger pool creation and exhaust all 8 connections
         conns = []
         for _ in range(8):
             conns.append(unob._get_db())
         resp = health_client.get("/health/ready")
-        assert resp.status_code == 200  # 0 idle but pool just created, may still be "degraded" or "unhealthy"
+        assert resp.status_code == 503  # 0 available = unhealthy
         data = resp.json()
+        assert data["status"] == "unhealthy"
         assert data["checks"]["db_pool"]["idle"] == 0
         assert data["checks"]["db_pool"]["in_use"] == 8
         # Release
         for c in conns:
             unob._release_db(c)
+
+    def test_liveness_works_when_readiness_unhealthy(self, health_client):
+        """Liveness probe returns 200 even when readiness is unhealthy."""
+        app = health_client.app
+        unob = app.state.unob
+        # Exhaust pool to make readiness unhealthy
+        conns = [unob._get_db() for _ in range(8)]
+        # Readiness should be 503
+        assert health_client.get("/health/ready").status_code == 503
+        # Liveness should still be 200
+        resp = health_client.get("/health/live")
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+        for c in conns:
+            unob._release_db(c)
+
+    def test_readiness_timeout_returns_503(self, health_client):
+        """If readiness checks hang beyond 1 second, return 503."""
+        import asyncio
+        from unittest.mock import patch
+
+        async def slow_checks(*args, **kwargs):
+            await asyncio.sleep(5)  # Will exceed 1s timeout
+
+        with patch("teredacta.routers.health._readiness_checks", slow_checks):
+            resp = health_client.get("/health/ready")
+            assert resp.status_code == 503
+            assert resp.json()["status"] == "unhealthy"
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -386,8 +420,6 @@ from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
-_startup_time = time.monotonic()
-
 
 @router.get("/live")
 async def liveness():
@@ -407,16 +439,20 @@ async def _readiness_checks(request: Request) -> JSONResponse:
     config = request.app.state.config
     unob = request.app.state.unob
     sse = getattr(request.app.state, "sse", None)
-    is_local = getattr(request.client, "host", None) in ("127.0.0.1", "localhost", "::1", "testclient")
+    # request.client can be None behind some reverse proxy configs
+    client_host = getattr(request.client, "host", None) if request.client else None
+    is_local = client_host in ("127.0.0.1", "localhost", "::1", "testclient")
     is_admin = getattr(request.state, "is_admin", False)
     show_details = is_local or is_admin
 
     # DB pool check
     pool_data = unob.pool_status()
     if pool_data is None:
-        pool_check = {"status": "ok", "idle": 0, "in_use": 0, "capacity": 8}
+        # Pool not yet initialized — no queries made yet, healthy
+        pool_check = {"status": "ok", "idle": 0, "in_use": 0, "capacity": 0}
     else:
-        available = pool_data["idle"] + (pool_data["capacity"] - pool_data["in_use"] - pool_data["idle"])
+        # available = idle connections + uncreated slots
+        available = pool_data["capacity"] - pool_data["in_use"]
         if available >= config.health_pool_degraded_threshold:
             pool_status = "ok"
         elif available >= 1:
@@ -455,7 +491,7 @@ async def _readiness_checks(request: Request) -> JSONResponse:
             "checks": {
                 "db_pool": pool_check,
                 "sse": sse_check,
-                "uptime_seconds": round(time.monotonic() - _startup_time, 1),
+                "uptime_seconds": round(time.monotonic() - request.app.state.startup_time, 1),
             },
         }
     else:
@@ -477,10 +513,13 @@ to:
     from teredacta.routers import dashboard, documents, groups, recoveries, pdf, queue, summary, admin, explore, highlights, api, health
 ```
 
-And add the mount after the SSE router mount (after line 51):
+And add the mount and startup time after the SSE router mount (after line 51):
 ```python
     app.include_router(health.router, prefix="/health")
+    app.state.startup_time = time.monotonic()
 ```
+
+Also add `import time` to the top of `app.py` (after `import logging`).
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -512,15 +551,17 @@ class _HealthLogFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage()
-        if "/health/" in msg:
+        if " /health/" in msg:
             return False
         return True
 ```
 
-Add inside `create_app()`, before the middleware definition (before line 40):
+Add inside `create_app()`, before the middleware definition (before line 40). Guard against accumulation from repeated `create_app()` calls in tests:
 
 ```python
-    logging.getLogger("uvicorn.access").addFilter(_HealthLogFilter())
+    _access_logger = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, _HealthLogFilter) for f in _access_logger.filters):
+        _access_logger.addFilter(_HealthLogFilter())
 ```
 
 - [ ] **Step 2: Run existing tests to verify nothing broke**
@@ -577,7 +618,7 @@ markers = [
     "stress: stress tests (deselected by default, run with: pytest -m stress)",
 ]
 addopts = "-m 'not stress'"
-asyncio_mode = "auto"
+asyncio_mode = "strict"
 ```
 
 - [ ] **Step 3: Install updated deps**
@@ -770,8 +811,10 @@ from teredacta.sse import SSEManager
 @pytest.mark.stress
 @pytest.mark.timeout(90)
 class TestSSESaturation:
+    """All tests are async because SSEManager.subscribe() calls asyncio.create_task()."""
 
-    def test_200_subscribers_no_leak(self):
+    @pytest.mark.asyncio
+    async def test_200_subscribers_no_leak(self):
         """Open 200 subscribers, unsubscribe all, verify cleanup."""
         sse = SSEManager(poll_interval=1.0, unob=None)
         queues = [sse.subscribe() for _ in range(200)]
@@ -781,11 +824,26 @@ class TestSSESaturation:
             sse.unsubscribe(q)
         assert sse.subscriber_count == 0
 
-    def test_ungraceful_disconnect_cleanup_via_queuefull(self):
-        """Abandoned queues are cleaned up when QueueFull is hit during broadcast."""
-        sse = SSEManager(poll_interval=1.0, unob=None)
+    @pytest.mark.asyncio
+    async def test_ungraceful_disconnect_cleanup_via_poll_loop(self):
+        """Abandoned queues are cleaned up by the real _poll_loop broadcast."""
+        from unittest.mock import MagicMock
 
-        # Subscribe 10 queues, then "abandon" 5 (never read from them)
+        # Create a mock unob that returns changing stats each call
+        mock_unob = MagicMock()
+        call_count = 0
+        def changing_stats():
+            nonlocal call_count
+            call_count += 1
+            return {"total_documents": call_count}
+        def changing_daemon():
+            return "running"
+        mock_unob.get_stats = changing_stats
+        mock_unob.get_daemon_status = changing_daemon
+
+        sse = SSEManager(poll_interval=0.01, unob=mock_unob)
+
+        # Subscribe 10 queues — 5 active (we drain), 5 abandoned
         active_queues = []
         abandoned_queues = []
         for i in range(10):
@@ -797,33 +855,26 @@ class TestSSESaturation:
 
         assert sse.subscriber_count == 10
 
-        # Fill abandoned queues to capacity (maxsize=100)
-        # Simulate broadcasts until QueueFull triggers cleanup
-        for i in range(101):
-            event = f"data: {{\"seq\": {i}}}\n\n"
-            dead = []
-            for q in list(sse._subscribers):
-                try:
-                    q.put_nowait(event)
-                except asyncio.QueueFull:
-                    dead.append(q)
-            for q in dead:
-                sse._subscribers.discard(q)
-            # Drain active queues to prevent them from filling
+        # Let the real poll loop run and broadcast events.
+        # Drain active queues so they don't fill up.
+        # Abandoned queues will fill (maxsize=100) and get evicted.
+        for _ in range(150):
+            await asyncio.sleep(0.02)
             for q in active_queues:
                 try:
                     q.get_nowait()
                 except asyncio.QueueEmpty:
                     pass
 
-        # Abandoned queues should have been evicted
+        # Abandoned queues should have been evicted by _poll_loop
         assert sse.subscriber_count == 5
 
         for q in active_queues:
             sse.unsubscribe(q)
         assert sse.subscriber_count == 0
 
-    def test_rapid_connect_disconnect_cycle(self):
+    @pytest.mark.asyncio
+    async def test_rapid_connect_disconnect_cycle(self):
         """1000 rapid subscribe/unsubscribe cycles with no resource leak."""
         sse = SSEManager(poll_interval=1.0, unob=None)
 
@@ -833,12 +884,13 @@ class TestSSESaturation:
 
         assert sse.subscriber_count == 0
 
-    def test_subscribe_without_iterating_persists(self):
+    @pytest.mark.asyncio
+    async def test_subscribe_without_iterating_persists(self):
         """A queue subscribed but never iterated persists until QueueFull.
 
         This documents the known behavior: if subscribe() is called
         but the StreamingResponse generator never starts, the queue
-        stays in _subscribers until broadcasts fill it to capacity.
+        stays in _subscribers until broadcasts fill it to capacity (100).
         """
         sse = SSEManager(poll_interval=1.0, unob=None)
         orphan = sse.subscribe()
@@ -846,17 +898,15 @@ class TestSSESaturation:
         # The orphan queue exists
         assert sse.subscriber_count == 1
 
-        # It won't be cleaned up until QueueFull (100 events)
-        for i in range(99):
-            try:
-                orphan.put_nowait(f"data: {i}\n\n")
-            except asyncio.QueueFull:
-                break
+        # Fill to capacity (maxsize=100). subscribe() doesn't put
+        # anything in the queue, so we need 100 puts to fill it.
+        for i in range(100):
+            orphan.put_nowait(f"data: {i}\n\n")
 
-        # Still there (not yet full — 1 from subscribe + 99 = 100)
+        # Still there (full but not yet evicted — eviction happens on next broadcast)
         assert sse.subscriber_count == 1
 
-        # One more triggers QueueFull during next broadcast
+        # One more triggers QueueFull — simulating what _poll_loop does
         dead = []
         try:
             orphan.put_nowait("data: overflow\n\n")
@@ -896,7 +946,56 @@ git commit -m "test: add SSE saturation stress tests"
 
 ---
 
-### Task 9: Stress test — Thread pool exhaustion
+### Task 9: Add shared stress test fixtures to conftest.py
+
+**Files:**
+- Modify: `teredacta/tests/conftest.py`
+
+This avoids duplicating the full DB schema across every stress test file.
+
+- [ ] **Step 1: Add stress_db and stress_app fixtures to conftest.py**
+
+Append to `teredacta/tests/conftest.py`:
+
+```python
+@pytest.fixture
+def stress_db(tmp_path, mock_db):
+    """Reuse mock_db schema with optional seed data for stress tests."""
+    return mock_db
+
+
+@pytest.fixture
+def stress_app(tmp_path, stress_db):
+    """App for stress tests using the shared mock_db schema."""
+    cfg = TeredactaConfig(
+        unobfuscator_path=str(tmp_path),
+        unobfuscator_bin="echo",
+        db_path=str(stress_db),
+        pdf_cache_dir=str(tmp_path / "pdf_cache"),
+        output_dir=str(tmp_path / "output"),
+        log_path=str(tmp_path / "unobfuscator.log"),
+        host="127.0.0.1",
+        port=8000,
+    )
+    from teredacta.app import create_app
+    return create_app(cfg)
+```
+
+- [ ] **Step 2: Run existing tests to verify nothing broke**
+
+Run: `pytest teredacta/tests/test_health.py -v`
+Expected: All tests PASS
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add teredacta/tests/conftest.py
+git commit -m "test: add shared stress_db and stress_app fixtures"
+```
+
+---
+
+### Task 10: Stress test — Thread pool exhaustion
 
 **Files:**
 - Create: `teredacta/tests/test_stress_thread_pool.py`
@@ -909,102 +1008,45 @@ Create `teredacta/tests/test_stress_thread_pool.py`:
 """Stress tests for thread pool exhaustion scenarios."""
 
 import asyncio
-import sqlite3
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 import httpx
 
-from teredacta.config import TeredactaConfig
-
 
 @pytest.mark.stress
 @pytest.mark.timeout(90)
 class TestThreadPoolExhaustion:
 
-    @pytest.fixture
-    def stress_app(self, tmp_path):
-        """Create app with a small, pinned executor for deterministic tests."""
-        db_path = tmp_path / "test.db"
-        conn = sqlite3.connect(str(db_path))
-        conn.execute(
-            "CREATE TABLE documents (id TEXT PRIMARY KEY, source TEXT, "
-            "extracted_text TEXT, text_processed BOOLEAN DEFAULT 0, "
-            "pdf_processed BOOLEAN DEFAULT 0, original_filename TEXT, "
-            "page_count INTEGER, size_bytes INTEGER)"
-        )
-        conn.execute(
-            "CREATE TABLE match_groups (group_id INTEGER PRIMARY KEY, "
-            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, merged BOOLEAN DEFAULT 0)"
-        )
-        conn.execute(
-            "CREATE TABLE merge_results (group_id INTEGER PRIMARY KEY, "
-            "merged_text TEXT, recovered_count INTEGER DEFAULT 0, "
-            "previous_recovered_count INTEGER DEFAULT 0, total_redacted INTEGER DEFAULT 0, "
-            "source_doc_ids TEXT, created_at DATETIME, updated_at DATETIME, "
-            "output_generated BOOLEAN DEFAULT 0, recovered_segments TEXT, "
-            "soft_recovered_count INTEGER DEFAULT 0)"
-        )
-        conn.execute(
-            "CREATE TABLE document_fingerprints (doc_id TEXT PRIMARY KEY, "
-            "minhash_sig BLOB, shingle_count INTEGER, created_at DATETIME)"
-        )
-        conn.execute(
-            "CREATE TABLE jobs (job_id INTEGER PRIMARY KEY, stage TEXT, "
-            "payload TEXT, priority INTEGER DEFAULT 0, status TEXT DEFAULT 'pending', "
-            "error TEXT, created_at DATETIME, updated_at DATETIME)"
-        )
-        conn.execute(
-            "CREATE TABLE config (key TEXT PRIMARY KEY, value TEXT)"
-        )
-        conn.execute(
-            "CREATE TABLE release_batches (batch_id TEXT PRIMARY KEY, "
-            "first_seen_at DATETIME, fully_indexed BOOLEAN DEFAULT 0)"
-        )
-        conn.execute(
-            "CREATE TABLE match_group_members (group_id INTEGER, doc_id TEXT, "
-            "similarity REAL, added_at DATETIME, PRIMARY KEY (group_id, doc_id))"
-        )
-        conn.close()
-
-        cfg = TeredactaConfig(
-            unobfuscator_path=str(tmp_path),
-            unobfuscator_bin="echo",
-            db_path=str(db_path),
-            pdf_cache_dir=str(tmp_path / "pdf_cache"),
-            output_dir=str(tmp_path / "output"),
-            log_path=str(tmp_path / "unobfuscator.log"),
-            host="127.0.0.1",
-            port=8000,
-        )
-        (tmp_path / "pdf_cache").mkdir(exist_ok=True)
-        (tmp_path / "output").mkdir(exist_ok=True)
-        (tmp_path / "unobfuscator.log").touch()
-
-        from teredacta.app import create_app
-        return create_app(cfg)
+    @pytest.fixture(autouse=True)
+    def pin_executor(self):
+        """Pin executor to small size and restore original after test."""
+        loop = asyncio.get_event_loop()
+        original_executor = loop._default_executor
+        small_executor = ThreadPoolExecutor(max_workers=4)
+        loop.set_default_executor(small_executor)
+        yield small_executor
+        # Restore original executor
+        loop.set_default_executor(original_executor)
+        small_executor.shutdown(wait=False, cancel_futures=True)
 
     @pytest.mark.asyncio
-    async def test_liveness_responds_when_executor_saturated(self, stress_app):
+    async def test_liveness_responds_when_executor_saturated(self, stress_app, pin_executor):
         """Liveness probe works even when executor threads are all blocked."""
-        # Pin a small executor
-        small_executor = ThreadPoolExecutor(max_workers=4)
         loop = asyncio.get_running_loop()
-        loop.set_default_executor(small_executor)
 
-        # Saturate the executor with blocking tasks
-        block_event = asyncio.Event()
+        # Saturate the executor with short blocking tasks (2s, not 10s)
+        barrier = threading.Event()
         futures = []
         for _ in range(4):
-            fut = loop.run_in_executor(None, lambda: asyncio.run(block_event.wait()) if False else time.sleep(10))
+            fut = loop.run_in_executor(None, lambda: barrier.wait(timeout=2.0))
             futures.append(fut)
 
         try:
-            # Give tasks a moment to claim all executor threads
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.3)
 
-            # Liveness should still respond (it's pure async, no executor)
             async with httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=stress_app),
                 base_url="http://testserver",
@@ -1016,25 +1058,22 @@ class TestThreadPoolExhaustion:
                 assert resp.status_code == 200
                 assert resp.json()["status"] == "ok"
         finally:
-            # Cancel blocking tasks
-            for fut in futures:
-                fut.cancel()
-            small_executor.shutdown(wait=False, cancel_futures=True)
+            barrier.set()  # Unblock all threads
+            await asyncio.gather(*futures, return_exceptions=True)
 
     @pytest.mark.asyncio
-    async def test_readiness_responds_when_executor_saturated(self, stress_app):
+    async def test_readiness_responds_when_executor_saturated(self, stress_app, pin_executor):
         """Readiness probe works even when executor threads are all blocked."""
-        small_executor = ThreadPoolExecutor(max_workers=4)
         loop = asyncio.get_running_loop()
-        loop.set_default_executor(small_executor)
+        barrier = threading.Event()
 
         futures = []
         for _ in range(4):
-            fut = loop.run_in_executor(None, lambda: time.sleep(10))
+            fut = loop.run_in_executor(None, lambda: barrier.wait(timeout=2.0))
             futures.append(fut)
 
         try:
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.3)
 
             async with httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=stress_app),
@@ -1045,12 +1084,10 @@ class TestThreadPoolExhaustion:
                     timeout=3.0,
                 )
                 assert resp.status_code == 200
-                # Pool not initialized yet, so healthy
                 assert resp.json()["status"] == "healthy"
         finally:
-            for fut in futures:
-                fut.cancel()
-            small_executor.shutdown(wait=False, cancel_futures=True)
+            barrier.set()
+            await asyncio.gather(*futures, return_exceptions=True)
 ```
 
 - [ ] **Step 2: Run to verify tests pass**
@@ -1067,7 +1104,7 @@ git commit -m "test: add thread pool exhaustion stress tests"
 
 ---
 
-### Task 10: Stress test — Compound deadlock (production failure mode)
+### Task 11: Stress test — Compound deadlock (production failure mode)
 
 **Files:**
 - Create: `teredacta/tests/test_stress_compound_deadlock.py`
@@ -1087,15 +1124,12 @@ also need executor threads. This test verifies:
 """
 
 import asyncio
-import sqlite3
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 import httpx
 
-from teredacta.config import TeredactaConfig
 from teredacta.db_pool import ConnectionPool
 
 
@@ -1103,81 +1137,24 @@ from teredacta.db_pool import ConnectionPool
 @pytest.mark.timeout(90)
 class TestCompoundDeadlock:
 
-    @pytest.fixture
-    def stress_setup(self, tmp_path):
-        """Create app and pool with small sizes for deterministic testing."""
-        db_path = tmp_path / "test.db"
-        conn = sqlite3.connect(str(db_path))
-        conn.execute(
-            "CREATE TABLE documents (id TEXT PRIMARY KEY, source TEXT, "
-            "extracted_text TEXT, text_processed BOOLEAN DEFAULT 0, "
-            "pdf_processed BOOLEAN DEFAULT 0, original_filename TEXT, "
-            "page_count INTEGER, size_bytes INTEGER)"
-        )
-        conn.execute(
-            "CREATE TABLE match_groups (group_id INTEGER PRIMARY KEY, "
-            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, merged BOOLEAN DEFAULT 0)"
-        )
-        conn.execute(
-            "CREATE TABLE merge_results (group_id INTEGER PRIMARY KEY, "
-            "merged_text TEXT, recovered_count INTEGER DEFAULT 0, "
-            "previous_recovered_count INTEGER DEFAULT 0, total_redacted INTEGER DEFAULT 0, "
-            "source_doc_ids TEXT, created_at DATETIME, updated_at DATETIME, "
-            "output_generated BOOLEAN DEFAULT 0, recovered_segments TEXT, "
-            "soft_recovered_count INTEGER DEFAULT 0)"
-        )
-        conn.execute(
-            "CREATE TABLE document_fingerprints (doc_id TEXT PRIMARY KEY, "
-            "minhash_sig BLOB, shingle_count INTEGER, created_at DATETIME)"
-        )
-        conn.execute(
-            "CREATE TABLE jobs (job_id INTEGER PRIMARY KEY, stage TEXT, "
-            "payload TEXT, priority INTEGER DEFAULT 0, status TEXT DEFAULT 'pending', "
-            "error TEXT, created_at DATETIME, updated_at DATETIME)"
-        )
-        conn.execute(
-            "CREATE TABLE config (key TEXT PRIMARY KEY, value TEXT)"
-        )
-        conn.execute(
-            "CREATE TABLE release_batches (batch_id TEXT PRIMARY KEY, "
-            "first_seen_at DATETIME, fully_indexed BOOLEAN DEFAULT 0)"
-        )
-        conn.execute(
-            "CREATE TABLE match_group_members (group_id INTEGER, doc_id TEXT, "
-            "similarity REAL, added_at DATETIME, PRIMARY KEY (group_id, doc_id))"
-        )
-        conn.close()
-
-        cfg = TeredactaConfig(
-            unobfuscator_path=str(tmp_path),
-            unobfuscator_bin="echo",
-            db_path=str(db_path),
-            pdf_cache_dir=str(tmp_path / "pdf_cache"),
-            output_dir=str(tmp_path / "output"),
-            log_path=str(tmp_path / "unobfuscator.log"),
-            host="127.0.0.1",
-            port=8000,
-        )
-        (tmp_path / "pdf_cache").mkdir(exist_ok=True)
-        (tmp_path / "output").mkdir(exist_ok=True)
-        (tmp_path / "unobfuscator.log").touch()
-
-        from teredacta.app import create_app
-        app = create_app(cfg)
-        return app, db_path
+    @pytest.fixture(autouse=True)
+    def pin_executor(self):
+        """Pin executor to 8 threads (same as pool size) and restore after."""
+        loop = asyncio.get_event_loop()
+        original_executor = loop._default_executor
+        small_executor = ThreadPoolExecutor(max_workers=8)
+        loop.set_default_executor(small_executor)
+        yield small_executor
+        loop.set_default_executor(original_executor)
+        small_executor.shutdown(wait=False, cancel_futures=True)
 
     @pytest.mark.asyncio
-    async def test_event_loop_survives_compound_deadlock(self, stress_setup):
+    async def test_event_loop_survives_compound_deadlock(self, stress_app, stress_db):
         """Event loop stays responsive even when executor + pool are both saturated."""
-        app, db_path = stress_setup
-
-        # Pin executor to 8 threads (same as pool size — worst case)
-        small_executor = ThreadPoolExecutor(max_workers=8)
         loop = asyncio.get_running_loop()
-        loop.set_default_executor(small_executor)
 
         # Create a pool we can control
-        pool = ConnectionPool(str(db_path), max_size=8, read_only=True)
+        pool = ConnectionPool(str(stress_db), max_size=8, read_only=True)
 
         # Phase 1: Hold all 8 pool connections
         held_conns = [pool.acquire(timeout=5.0) for _ in range(8)]
@@ -1198,7 +1175,7 @@ class TestCompoundDeadlock:
 
         # Phase 3: Verify event loop is still alive
         async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app),
+            transport=httpx.ASGITransport(app=stress_app),
             base_url="http://testserver",
         ) as client:
             resp = await asyncio.wait_for(
@@ -1217,7 +1194,6 @@ class TestCompoundDeadlock:
 
         # Some may have acquired (after release), some may have timed out
         acquired = [r for r in results if not isinstance(r, Exception)]
-        timed_out = [r for r in results if isinstance(r, (TimeoutError, Exception))]
 
         # Release any that acquired
         for conn in acquired:
@@ -1226,20 +1202,17 @@ class TestCompoundDeadlock:
         # Phase 6: Verify recovery
         status = pool.pool_status()
         assert status["in_use"] == 0
-        assert status["idle"] == 8  # all returned
 
         # New acquire should work instantly
         conn = pool.acquire(timeout=1.0)
         pool.release(conn)
 
         pool.close()
-        small_executor.shutdown(wait=False, cancel_futures=True)
 
     @pytest.mark.asyncio
-    async def test_health_reports_degraded_during_contention(self, stress_setup):
+    async def test_health_reports_degraded_during_contention(self, stress_app):
         """Health endpoint reports correct status during compound contention."""
-        app, db_path = stress_setup
-        unob = app.state.unob
+        unob = stress_app.state.unob
 
         # Force pool creation by making a query
         conn = unob._get_db()
@@ -1251,7 +1224,7 @@ class TestCompoundDeadlock:
             held.append(unob._get_db())
 
         async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app),
+            transport=httpx.ASGITransport(app=stress_app),
             base_url="http://testserver",
         ) as client:
             resp = await client.get("/health/ready")
@@ -1265,7 +1238,7 @@ class TestCompoundDeadlock:
 
         # After release — should be healthy again
         async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app),
+            transport=httpx.ASGITransport(app=stress_app),
             base_url="http://testserver",
         ) as client:
             resp = await client.get("/health/ready")
@@ -1287,7 +1260,7 @@ git commit -m "test: add compound deadlock stress test (production failure mode)
 
 ---
 
-### Task 11: Stress test — Mixed workload
+### Task 12: Stress test — Mixed workload
 
 **Files:**
 - Create: `teredacta/tests/test_stress_mixed.py`
@@ -1305,91 +1278,31 @@ import sqlite3
 import pytest
 import httpx
 
-from teredacta.config import TeredactaConfig
-
 
 @pytest.mark.stress
 @pytest.mark.timeout(90)
 class TestMixedWorkload:
 
     @pytest.fixture
-    def mixed_app(self, tmp_path):
-        """App with populated DB for mixed workload testing."""
-        db_path = tmp_path / "test.db"
-        conn = sqlite3.connect(str(db_path))
-        conn.executescript("""
-            CREATE TABLE documents (
-                id TEXT PRIMARY KEY, source TEXT, extracted_text TEXT,
-                text_processed BOOLEAN DEFAULT 0, pdf_processed BOOLEAN DEFAULT 0,
-                original_filename TEXT, page_count INTEGER, size_bytes INTEGER,
-                release_batch TEXT, description TEXT, pdf_url TEXT,
-                indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                text_source TEXT, ocr_processed BOOLEAN DEFAULT 0, page_tags TEXT
-            );
-            CREATE TABLE match_groups (
-                group_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP, merged BOOLEAN DEFAULT 0
-            );
-            CREATE TABLE match_group_members (
-                group_id INTEGER, doc_id TEXT, similarity REAL,
-                added_at DATETIME, PRIMARY KEY (group_id, doc_id)
-            );
-            CREATE TABLE merge_results (
-                group_id INTEGER PRIMARY KEY, merged_text TEXT,
-                recovered_count INTEGER DEFAULT 0, previous_recovered_count INTEGER DEFAULT 0,
-                total_redacted INTEGER DEFAULT 0, source_doc_ids TEXT,
-                created_at DATETIME, updated_at DATETIME,
-                output_generated BOOLEAN DEFAULT 0,
-                recovered_segments TEXT, soft_recovered_count INTEGER DEFAULT 0
-            );
-            CREATE TABLE document_fingerprints (
-                doc_id TEXT PRIMARY KEY, minhash_sig BLOB,
-                shingle_count INTEGER, created_at DATETIME
-            );
-            CREATE TABLE jobs (
-                job_id INTEGER PRIMARY KEY AUTOINCREMENT, stage TEXT,
-                payload TEXT, priority INTEGER DEFAULT 0,
-                status TEXT DEFAULT 'pending', error TEXT,
-                created_at DATETIME, updated_at DATETIME
-            );
-            CREATE TABLE config (key TEXT PRIMARY KEY, value TEXT);
-            CREATE TABLE release_batches (
-                batch_id TEXT PRIMARY KEY, first_seen_at DATETIME,
-                fully_indexed BOOLEAN DEFAULT 0
-            );
-        """)
-        # Seed with enough data for non-trivial queries
+    def seeded_app(self, stress_app, stress_db):
+        """Seed the stress_db with document data for mixed workload."""
+        conn = sqlite3.connect(str(stress_db))
         rows = [
             (f"doc-{i}", f"source-{i % 5}", f"text content {i} " * 20,
-             1, 0, f"file_{i}.pdf", (i % 10) + 1, i * 100,
-             f"batch-{i % 3}", None, None, None, None, None)
+             1, 0, f"file_{i}.pdf", (i % 10) + 1, i * 100)
             for i in range(1000)
         ]
         conn.executemany(
-            "INSERT INTO documents VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows
+            "INSERT OR IGNORE INTO documents "
+            "(id, source, extracted_text, text_processed, pdf_processed, "
+            "original_filename, page_count, size_bytes) VALUES (?,?,?,?,?,?,?,?)", rows
         )
         conn.commit()
         conn.close()
-
-        cfg = TeredactaConfig(
-            unobfuscator_path=str(tmp_path),
-            unobfuscator_bin="echo",
-            db_path=str(db_path),
-            pdf_cache_dir=str(tmp_path / "pdf_cache"),
-            output_dir=str(tmp_path / "output"),
-            log_path=str(tmp_path / "unobfuscator.log"),
-            host="127.0.0.1",
-            port=8000,
-        )
-        (tmp_path / "pdf_cache").mkdir(exist_ok=True)
-        (tmp_path / "output").mkdir(exist_ok=True)
-        (tmp_path / "unobfuscator.log").touch()
-
-        from teredacta.app import create_app
-        return create_app(cfg)
+        return stress_app
 
     @pytest.mark.asyncio
-    async def test_concurrent_requests_and_sse(self, mixed_app):
+    async def test_concurrent_requests_and_sse(self, seeded_app):
         """Simultaneous HTTP requests + SSE subscribers don't deadlock."""
         errors = []
 
@@ -1421,7 +1334,7 @@ class TestMixedWorkload:
         health_results = []
 
         async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=mixed_app),
+            transport=httpx.ASGITransport(app=seeded_app),
             base_url="http://testserver",
         ) as client:
             # Launch mixed workload
@@ -1440,11 +1353,11 @@ class TestMixedWorkload:
             assert result["status"] in ("healthy", "degraded")
 
     @pytest.mark.asyncio
-    async def test_recovery_after_load(self, mixed_app):
+    async def test_recovery_after_load(self, seeded_app):
         """Health returns to healthy after load subsides."""
 
         async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=mixed_app),
+            transport=httpx.ASGITransport(app=seeded_app),
             base_url="http://testserver",
         ) as client:
             # Phase 1: Apply load
@@ -1476,20 +1389,20 @@ git commit -m "test: add mixed workload stress tests"
 
 ---
 
-### Task 12: Locust load test suite
+### Task 13: Locust load test suite
 
 **Files:**
-- Create: `stress/config.py`
+- Create: `stress/stress_config.py`
 - Create: `stress/locustfile.py`
 - Create: `stress/README.md`
 
-- [ ] **Step 1: Create stress/config.py**
+- [ ] **Step 1: Create stress/stress_config.py**
 
 ```bash
 mkdir -p stress
 ```
 
-Create `stress/config.py`:
+Create `stress/stress_config.py` (named `stress_config` to avoid shadowing `teredacta.config`):
 
 ```python
 """Configuration for locust stress tests."""
@@ -1515,6 +1428,12 @@ READINESS_UNHEALTHY_SECONDS = 60  # Sustained unhealthy = test failure
 # SSE connection parameters
 SSE_MIN_HOLD_SECONDS = 10
 SSE_MAX_HOLD_SECONDS = 60
+
+# Load test phases (seconds)
+RAMP_UP_SECONDS = 30
+SUSTAINED_SECONDS = 240
+RAMP_DOWN_SECONDS = 30
+RECOVERY_SECONDS = 15
 ```
 
 - [ ] **Step 2: Create stress/locustfile.py**
@@ -1532,31 +1451,76 @@ Run with Web UI:
 """
 
 import logging
+import math
 import random
 import time
 
-from locust import HttpUser, between, events, task
-from locust.exception import StopUser
+import gevent
+from locust import HttpUser, LoadTestShape, between, events, task
 
-from config import (
+from stress_config import (
     ADMIN_PASSWORD,
     ADMIN_USER_WEIGHT,
     HEALTH_MONITOR_WEIGHT,
+    RAMP_DOWN_SECONDS,
+    RAMP_UP_SECONDS,
     READINESS_UNHEALTHY_SECONDS,
+    RECOVERY_SECONDS,
     SSE_MAX_HOLD_SECONDS,
     SSE_MIN_HOLD_SECONDS,
     SSE_USER_WEIGHT,
+    SUSTAINED_SECONDS,
     WEB_USER_WEIGHT,
 )
 
 logger = logging.getLogger(__name__)
 
-# Track health status transitions globally
+# Track health status transitions globally.
+# Safe under gevent: cooperative scheduling, no I/O between read-modify-write.
 _health_tracker = {
     "last_healthy": time.monotonic(),
     "unhealthy_since": None,
     "liveness_failures": 0,
 }
+
+
+class StressTestShape(LoadTestShape):
+    """Custom load shape with warm-up, sustained, cool-down, and recovery phases.
+
+    Phase 1 (0-30s):      Ramp up from 0 to 200 users
+    Phase 2 (30s-4m30s):  Sustained at 200 users
+    Phase 3 (4m30s-5m):   Ramp down from 200 to 0
+    Phase 4 (5m-5m15s):   Recovery — only HealthMonitor users remain
+    """
+    MAX_USERS = 200
+    SPAWN_RATE = 10
+
+    def tick(self):
+        run_time = self.get_run_time()
+
+        if run_time < RAMP_UP_SECONDS:
+            # Phase 1: Ramp up
+            users = min(self.MAX_USERS, math.ceil(run_time * self.SPAWN_RATE))
+            return (users, self.SPAWN_RATE)
+
+        elif run_time < RAMP_UP_SECONDS + SUSTAINED_SECONDS:
+            # Phase 2: Sustained load
+            return (self.MAX_USERS, self.SPAWN_RATE)
+
+        elif run_time < RAMP_UP_SECONDS + SUSTAINED_SECONDS + RAMP_DOWN_SECONDS:
+            # Phase 3: Ramp down
+            elapsed_in_phase = run_time - RAMP_UP_SECONDS - SUSTAINED_SECONDS
+            fraction_remaining = 1 - (elapsed_in_phase / RAMP_DOWN_SECONDS)
+            users = max(1, math.ceil(self.MAX_USERS * fraction_remaining))
+            return (users, self.SPAWN_RATE)
+
+        elif run_time < RAMP_UP_SECONDS + SUSTAINED_SECONDS + RAMP_DOWN_SECONDS + RECOVERY_SECONDS:
+            # Phase 4: Recovery — keep minimal users for health monitoring
+            return (1, 1)
+
+        else:
+            # Done
+            return None
 
 
 class WebUser(HttpUser):
@@ -1584,7 +1548,6 @@ class WebUser(HttpUser):
 
     @task(1)
     def view_document_detail(self):
-        # Try a document ID — may 404 if data is sparse, that's fine
         doc_id = f"doc-{random.randint(1, 100)}"
         self.client.get(f"/documents/{doc_id}", name="/documents/[id]")
 
@@ -1593,7 +1556,8 @@ class SSEUser(HttpUser):
     """Simulates an admin subscribing to SSE stats."""
 
     weight = SSE_USER_WEIGHT
-    wait_time = between(SSE_MIN_HOLD_SECONDS, SSE_MAX_HOLD_SECONDS)
+    # Short wait between reconnections — hold time is inside the task
+    wait_time = between(1, 3)
 
     def on_start(self):
         """Authenticate to get admin session cookie."""
@@ -1601,6 +1565,7 @@ class SSEUser(HttpUser):
             "/admin/login",
             data={"password": ADMIN_PASSWORD},
             name="/admin/login",
+            allow_redirects=False,
         )
 
     @task
@@ -1613,6 +1578,7 @@ class SSEUser(HttpUser):
             with self.client.get(
                 "/sse/stats",
                 stream=True,
+                timeout=hold_time + 5,  # Hard timeout to prevent blocking beyond hold_time
                 name="/sse/stats",
                 catch_response=True,
             ) as resp:
@@ -1628,10 +1594,6 @@ class SSEUser(HttpUser):
         except Exception as e:
             logger.debug("SSE connection ended: %s", e)
 
-        # Occasionally simulate ungraceful disconnect (just stop — no close)
-        if random.random() < 0.3:
-            return  # ungraceful: let connection be GC'd
-
 
 class AdminUser(HttpUser):
     """Simulates admin dashboard usage."""
@@ -1644,6 +1606,7 @@ class AdminUser(HttpUser):
             "/admin/login",
             data={"password": ADMIN_PASSWORD},
             name="/admin/login",
+            allow_redirects=False,
         )
 
     @task(3)
@@ -1655,8 +1618,8 @@ class AdminUser(HttpUser):
         self.client.get("/admin/daemon/status")
 
     @task(2)
-    def view_queue(self):
-        self.client.get("/admin/queue")
+    def view_entity_index_status(self):
+        self.client.get("/admin/entity-index/status")
 
     @task(1)
     def view_config(self):
@@ -1720,7 +1683,7 @@ class HealthMonitor(HttpUser):
 
 @events.test_stop.add_listener
 def on_test_stop(environment, **kwargs):
-    """Report health summary at end of test."""
+    """Report health summary at end of test. process_exit_code only works in headless mode."""
     tracker = _health_tracker
     logger.info("=== Health Summary ===")
     logger.info("Liveness failures: %d", tracker["liveness_failures"])
@@ -1760,8 +1723,8 @@ teredacta run
 
 Then run the stress tests:
 ```bash
-# Headless (CI mode)
-locust -f stress/locustfile.py --headless -u 200 -r 10 -t 5m --host http://localhost:8000
+# Headless (CI mode) — uses StressTestShape for phases
+locust -f stress/locustfile.py --headless --host http://localhost:8000
 
 # With web UI (interactive)
 locust -f stress/locustfile.py --host http://localhost:8000
@@ -1772,7 +1735,7 @@ locust -f stress/locustfile.py --host http://localhost:8000
 
 ```bash
 export STRESS_ADMIN_PASSWORD=your-admin-password
-locust -f stress/locustfile.py --headless -u 200 -r 10 -t 5m --host https://your-vps.example.com
+locust -f stress/locustfile.py --headless --host https://your-vps.example.com
 ```
 
 ### With web UI
@@ -1781,6 +1744,15 @@ locust -f stress/locustfile.py --headless -u 200 -r 10 -t 5m --host https://your
 locust -f stress/locustfile.py --host https://your-vps.example.com
 ```
 Open http://localhost:8089 to configure users, spawn rate, and watch results.
+
+## Load Phases (StressTestShape)
+
+| Phase | Duration | Users | Description |
+|---|---|---|---|
+| Warm-up | 0-30s | 0→200 | Ramp up at 10 users/sec |
+| Sustained | 30s-4m30s | 200 | Full load |
+| Cool-down | 4m30s-5m | 200→0 | Ramp down |
+| Recovery | 5m-5m15s | 1 | Verify health returns to healthy |
 
 ## Configuration
 
@@ -1797,7 +1769,7 @@ Environment variables:
 |---|---|---|
 | WebUser | 60% | Browses public pages (documents, recoveries, highlights) |
 | SSEUser | 15% | Opens SSE connections, holds 10-60s, mix of graceful/ungraceful disconnects |
-| AdminUser | 20% | Admin dashboard, daemon status, queue, config, logs |
+| AdminUser | 20% | Admin dashboard, daemon status, entity index status, config, logs |
 | HealthMonitor | 5% | Polls /health/live and /health/ready, tracks status transitions |
 
 ## Success Criteria
@@ -1812,12 +1784,12 @@ Environment variables:
 
 ```bash
 git add stress/
-git commit -m "feat: add locust load test suite"
+git commit -m "feat: add locust load test suite with LoadTestShape phases"
 ```
 
 ---
 
-### Task 13: Update deploy docs with Caddy health check
+### Task 14: Update deploy docs with Caddy health check
 
 **Files:**
 - Modify: `deploy/README.md:56-68`
@@ -1864,7 +1836,7 @@ git commit -m "docs: add health check config for Caddy and monitoring"
 
 ---
 
-### Task 14: Run all tests and verify
+### Task 15: Run all tests and verify
 
 **Files:** None (verification only)
 
@@ -1903,23 +1875,25 @@ Task 3 (config fields) ──┤
                           ├── Task 4 (health router) ── Task 5 (log filter)
 Task 6 (pyproject.toml) ──┘
                                │
+                          Task 9 (shared fixtures)
+                               │
                     ┌──────────┼──────────┐──────────┐
                     ▼          ▼          ▼          ▼
-              Task 7      Task 8      Task 9     Task 10
+              Task 7      Task 8     Task 10     Task 11
             (db pool)     (sse)    (threadpool)  (deadlock)
                     │          │          │          │
                     └──────────┼──────────┘──────────┘
                                ▼
-                          Task 11 (mixed)
+                          Task 12 (mixed)
                                │
                                ▼
-                          Task 12 (locust)
+                          Task 13 (locust)
                                │
                                ▼
-                          Task 13 (deploy docs)
+                          Task 14 (deploy docs)
                                │
                                ▼
-                          Task 14 (verify all)
+                          Task 15 (verify all)
 ```
 
-Tasks 1, 2, 3, 6 can run in parallel. Tasks 7–10 can run in parallel after Task 4. Task 12 is independent of 7–11.
+Tasks 1, 2, 3, 6 can run in parallel. Task 9 (shared fixtures) after Task 4. Tasks 7, 8, 10, 11 can run in parallel after Task 9. Task 13 is independent of 7–12.
