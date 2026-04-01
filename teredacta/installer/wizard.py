@@ -286,7 +286,8 @@ def _generate_systemd(config: dict, unob_path: Path):
         f"[Service]\nType=simple\n"
         f"WorkingDirectory={unob_path}\n"
         f"ExecStart={unob_python} {unob_path / 'unobfuscator.py'} start -f\n"
-        f"Restart=on-failure\n\n"
+        f"Restart=on-failure\n"
+        f"RestartSec=10\n\n"
         f"[Install]\nWantedBy=default.target\n"
     )
     click.echo(f"  Wrote {unob_service}")
@@ -299,7 +300,8 @@ def _generate_systemd(config: dict, unob_path: Path):
         f"After=unobfuscator.service\n\n"
         f"[Service]\nType=simple\n"
         f"ExecStart={teredacta_bin} run --host {config['host']} --port {config['port']}\n"
-        f"Restart=on-failure\n\n"
+        f"Restart=on-failure\n"
+        f"RestartSec=5\n\n"
         f"[Install]\nWantedBy=default.target\n"
     )
     click.echo(f"  Wrote {teredacta_service}")
