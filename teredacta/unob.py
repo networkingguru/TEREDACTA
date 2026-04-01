@@ -22,12 +22,9 @@ _RE_CHANGE_U = re.compile(
 )
 _RE_CHANGE_BARE = re.compile(r"&lt;/?change&gt;")
 _RE_U_BARE = re.compile(r"&lt;/?u&gt;")
-_TABLE_RE = re.compile(
-    r"&lt;table&gt;"
-    r"((?:&lt;/?(?:tr|th|td)&gt;|[^&]|&(?!lt;/?table&gt;))*?)"
-    r"&lt;/table&gt;",
-    re.DOTALL,
-)
+_TABLE_OPEN = "&lt;table&gt;"
+_TABLE_CLOSE = "&lt;/table&gt;"
+_TABLE_TAG_RE = re.compile(r"&lt;/?(tr|th|td)&gt;")
 
 
 def parse_boolean_search(query: str) -> list[tuple[str, str]]:
@@ -1160,17 +1157,33 @@ class UnobInterface:
         # tool. We only restore tags that appear in a valid table structure
         # (table containing tr/th/td rows) to avoid injecting HTML if
         # document text happens to contain literal "<table>" strings.
-        def _restore_table(m: re.Match) -> str:
-            inner = m.group(1)
-            inner = inner.replace("&lt;tr&gt;", "<tr>")
-            inner = inner.replace("&lt;/tr&gt;", "</tr>")
-            inner = inner.replace("&lt;th&gt;", "<th>")
-            inner = inner.replace("&lt;/th&gt;", "</th>")
-            inner = inner.replace("&lt;td&gt;", "<td>")
-            inner = inner.replace("&lt;/td&gt;", "</td>")
-            return f'<table class="data-table" style="margin:0.5rem 0;">{inner}</table>'
-
-        escaped = _TABLE_RE.sub(_restore_table, escaped)
+        # Uses string search instead of regex to avoid catastrophic
+        # backtracking on malformed/unclosed table markup.
+        parts = []
+        search_start = 0
+        while True:
+            open_idx = escaped.find(_TABLE_OPEN, search_start)
+            if open_idx == -1:
+                break
+            close_idx = escaped.find(_TABLE_CLOSE, open_idx + len(_TABLE_OPEN))
+            if close_idx == -1:
+                break  # Unclosed table — skip, don't hang
+            inner = escaped[open_idx + len(_TABLE_OPEN):close_idx]
+            # Only restore if inner contains tr/th/td tags
+            if _TABLE_TAG_RE.search(inner):
+                inner = inner.replace("&lt;tr&gt;", "<tr>")
+                inner = inner.replace("&lt;/tr&gt;", "</tr>")
+                inner = inner.replace("&lt;th&gt;", "<th>")
+                inner = inner.replace("&lt;/th&gt;", "</th>")
+                inner = inner.replace("&lt;td&gt;", "<td>")
+                inner = inner.replace("&lt;/td&gt;", "</td>")
+                parts.append(escaped[search_start:open_idx])
+                parts.append(f'<table class="data-table" style="margin:0.5rem 0;">{inner}</table>')
+            else:
+                parts.append(escaped[search_start:close_idx + len(_TABLE_CLOSE)])
+            search_start = close_idx + len(_TABLE_CLOSE)
+        parts.append(escaped[search_start:])
+        escaped = "".join(parts)
         return escaped
 
     # --- PDF File Access ---
