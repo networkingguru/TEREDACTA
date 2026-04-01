@@ -9,7 +9,9 @@ Run with Web UI:
 
 import logging
 import math
+import os
 import random
+import re
 import time
 
 from locust import HttpUser, LoadTestShape, between, events, task
@@ -30,6 +32,16 @@ from stress_config import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@events.init.add_listener
+def on_locust_init(environment, **kwargs):
+    """Warn if STRESS_ADMIN_PASSWORD is not set."""
+    if not os.environ.get("STRESS_ADMIN_PASSWORD"):
+        logger.warning(
+            "STRESS_ADMIN_PASSWORD not set — admin and SSE tests will use "
+            "default 'test-password'. Set the env var for real server testing."
+        )
 
 # Track health status transitions globally.
 # Safe under gevent: cooperative scheduling, no I/O between read-modify-write.
@@ -85,6 +97,22 @@ class WebUser(HttpUser):
     weight = WEB_USER_WEIGHT
     wait_time = between(1, 5)
 
+    # Regex to extract document IDs from onclick handlers in the documents table.
+    # Matches: window.location="/documents/" + "some-id"
+    _DOC_ID_RE = re.compile(r'"/documents/"\s*\+\s*"([^"]+)"')
+
+    def on_start(self):
+        """Fetch the first page of documents and extract real document IDs."""
+        self.document_ids = []
+        try:
+            resp = self.client.get(
+                "/documents?page=1", name="/documents?page=[N] (init)"
+            )
+            if resp.status_code == 200:
+                self.document_ids = self._DOC_ID_RE.findall(resp.text)
+        except Exception:
+            logger.debug("WebUser: failed to fetch document IDs on start")
+
     @task(5)
     def browse_documents(self):
         page = random.randint(1, 10)
@@ -104,7 +132,9 @@ class WebUser(HttpUser):
 
     @task(1)
     def view_document_detail(self):
-        doc_id = f"doc-{random.randint(1, 100)}"
+        if not self.document_ids:
+            return
+        doc_id = random.choice(self.document_ids)
         self.client.get(f"/documents/{doc_id}", name="/documents/[id]")
 
 
@@ -117,16 +147,27 @@ class SSEUser(HttpUser):
 
     def on_start(self):
         """Authenticate to get admin session cookie."""
-        self.client.post(
+        self.authenticated = False
+        resp = self.client.post(
             "/admin/login",
             data={"password": ADMIN_PASSWORD},
             name="/admin/login",
             allow_redirects=False,
         )
+        if resp.status_code == 401:
+            logger.warning(
+                "SSEUser login failed (401) — skipping all authenticated requests. "
+                "Set STRESS_ADMIN_PASSWORD env var to the real admin password."
+            )
+        else:
+            self.authenticated = True
 
     @task
     def subscribe_sse(self):
         """Open SSE connection, hold it, then disconnect."""
+        if not self.authenticated:
+            return
+
         hold_time = random.uniform(SSE_MIN_HOLD_SECONDS, SSE_MAX_HOLD_SECONDS)
         start = time.monotonic()
 
@@ -158,31 +199,49 @@ class AdminUser(HttpUser):
     wait_time = between(2, 8)
 
     def on_start(self):
-        self.client.post(
+        self.authenticated = False
+        resp = self.client.post(
             "/admin/login",
             data={"password": ADMIN_PASSWORD},
             name="/admin/login",
             allow_redirects=False,
         )
+        if resp.status_code == 401:
+            logger.warning(
+                "AdminUser login failed (401) — skipping all authenticated requests. "
+                "Set STRESS_ADMIN_PASSWORD env var to the real admin password."
+            )
+        else:
+            self.authenticated = True
 
     @task(3)
     def view_admin_dashboard(self):
+        if not self.authenticated:
+            return
         self.client.get("/admin/")
 
     @task(2)
     def check_daemon_status(self):
+        if not self.authenticated:
+            return
         self.client.get("/admin/daemon/status")
 
     @task(2)
     def view_entity_index_status(self):
+        if not self.authenticated:
+            return
         self.client.get("/admin/entity-index/status")
 
     @task(1)
     def view_config(self):
+        if not self.authenticated:
+            return
         self.client.get("/admin/config")
 
     @task(1)
     def view_logs(self):
+        if not self.authenticated:
+            return
         self.client.get("/admin/logs")
 
 
