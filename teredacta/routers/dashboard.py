@@ -15,6 +15,8 @@ async def sse_stats(request: Request):
     if sse is None:
         return HTMLResponse("SSE not configured", status_code=503)
     queue = sse.subscribe()
+    if queue is None:
+        return HTMLResponse("Too many active connections. Please try again shortly.", status_code=503)
     return StreamingResponse(
         sse.event_generator(queue),
         media_type="text/event-stream",

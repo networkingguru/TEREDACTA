@@ -44,7 +44,7 @@ def create_app(config: TeredactaConfig) -> FastAPI:
     app.state.entity_index = EntityIndex(config.entity_db_path)
 
     from teredacta.sse import SSEManager
-    app.state.sse = SSEManager(poll_interval=config.sse_poll_interval_seconds, unob=app.state.unob)
+    app.state.sse = SSEManager(poll_interval=config.sse_poll_interval_seconds, unob=app.state.unob, max_subscribers=config.max_sse_subscribers)
 
     static_dir = Path(__file__).parent / "static"
     if static_dir.exists():
