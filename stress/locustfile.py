@@ -14,10 +14,14 @@ import time
 
 from locust import HttpUser, LoadTestShape, between, events, task
 
+import time as _time
+
 from stress_config import (
     ADMIN_PASSWORD,
     ADMIN_USER_WEIGHT,
     HEALTH_MONITOR_WEIGHT,
+    QUEUE_MAX_WAIT_SECONDS,
+    QUEUE_POLL_INTERVAL_SECONDS,
     RAMP_DOWN_SECONDS,
     RAMP_UP_SECONDS,
     READINESS_UNHEALTHY_SECONDS,
@@ -48,8 +52,8 @@ class StressTestShape(LoadTestShape):
     Phase 3 (4m30s-5m):   Ramp down from 200 to 0
     Phase 4 (5m-5m15s):   Recovery — only HealthMonitor users remain
     """
-    MAX_USERS = 200
-    SPAWN_RATE = 10
+    MAX_USERS = 500
+    SPAWN_RATE = 20
 
     def tick(self):
         run_time = self.get_run_time()
@@ -85,27 +89,56 @@ class WebUser(HttpUser):
     weight = WEB_USER_WEIGHT
     wait_time = between(1, 5)
 
+    def _handle_possible_queue(self, response, name):
+        """If response is a queue page (202), poll until ready then re-request."""
+        if response.status_code != 202:
+            return response
+
+        ticket = response.cookies.get("_queue_ticket")
+        if not ticket:
+            return response
+
+        start = _time.monotonic()
+        while _time.monotonic() - start < QUEUE_MAX_WAIT_SECONDS:
+            _time.sleep(QUEUE_POLL_INTERVAL_SECONDS)
+            poll = self.client.get(
+                f"/_queue/status?ticket={ticket}",
+                name="/_queue/status",
+            )
+            if poll.status_code == 200:
+                data = poll.json()
+                if data.get("ready"):
+                    return self.client.get(response.request.path_url, name=name)
+                if data.get("requeue"):
+                    return self.client.get(response.request.path_url, name=name)
+        return response  # timed out
+
     @task(5)
     def browse_documents(self):
         page = random.randint(1, 10)
-        self.client.get(f"/documents?page={page}", name="/documents?page=[N]")
+        resp = self.client.get(f"/documents?page={page}", name="/documents?page=[N]")
+        self._handle_possible_queue(resp, "/documents?page=[N]")
 
     @task(3)
     def browse_recoveries(self):
-        self.client.get("/recoveries")
+        resp = self.client.get("/recoveries")
+        self._handle_possible_queue(resp, "/recoveries")
 
     @task(3)
     def browse_highlights(self):
-        self.client.get("/highlights")
+        resp = self.client.get("/highlights")
+        self._handle_possible_queue(resp, "/highlights")
 
     @task(2)
     def browse_explore(self):
-        self.client.get("/")
+        resp = self.client.get("/")
+        self._handle_possible_queue(resp, "/")
 
     @task(1)
     def view_document_detail(self):
         doc_id = f"doc-{random.randint(1, 100)}"
-        self.client.get(f"/documents/{doc_id}", name="/documents/[id]")
+        resp = self.client.get(f"/documents/{doc_id}", name="/documents/[id]")
+        self._handle_possible_queue(resp, "/documents/[id]")
 
 
 class SSEUser(HttpUser):
@@ -195,7 +228,9 @@ class HealthMonitor(HttpUser):
     @task(3)
     def check_liveness(self):
         with self.client.get("/health/live", catch_response=True, name="/health/live") as resp:
-            if resp.status_code != 200:
+            if resp.status_code == 202:
+                resp.failure("HEALTH ENDPOINT WAS QUEUED — admission bug")
+            elif resp.status_code != 200:
                 _health_tracker["liveness_failures"] += 1
                 resp.failure(f"LIVENESS FAILURE: {resp.status_code}")
                 logger.error("LIVENESS PROBE FAILED: status=%s", resp.status_code)
@@ -206,6 +241,10 @@ class HealthMonitor(HttpUser):
     def check_readiness(self):
         with self.client.get("/health/ready", catch_response=True, name="/health/ready") as resp:
             now = time.monotonic()
+
+            if resp.status_code == 202:
+                resp.failure("HEALTH ENDPOINT WAS QUEUED — admission bug")
+                return
 
             if resp.status_code == 200:
                 data = resp.json()
