@@ -29,6 +29,11 @@ class ConnectionPool:
         self._size = 0
         self._lock = threading.Lock()
         self._closed = False
+        # Enable WAL mode (persistent, only needs to be set once per DB file)
+        conn = self._create_connection()
+        conn.execute("PRAGMA journal_mode = WAL")
+        self._pool.put(conn)
+        self._size = 1
 
     def _create_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(

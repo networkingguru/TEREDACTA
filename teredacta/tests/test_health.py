@@ -10,13 +10,26 @@ from fastapi.testclient import TestClient
 from teredacta.db_pool import ConnectionPool
 
 
+class TestWALMode:
+    def test_pool_enables_wal_mode(self, tmp_path):
+        db = tmp_path / "test.db"
+        sqlite3.connect(str(db)).close()
+        pool = ConnectionPool(str(db), max_size=2)
+        conn = pool.acquire()
+        mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+        pool.release(conn)
+        pool.close()
+        assert mode == "wal"
+
+
 class TestPoolStatus:
     def test_pool_status_empty_pool(self, tmp_path):
         db = tmp_path / "test.db"
         sqlite3.connect(str(db)).close()
         pool = ConnectionPool(str(db), max_size=4)
         status = pool.pool_status()
-        assert status == {"idle": 0, "in_use": 0, "capacity": 4}
+        # Pool pre-creates one connection during __init__ to enable WAL mode
+        assert status == {"idle": 1, "in_use": 0, "capacity": 4}
         pool.close()
 
     def test_pool_status_one_acquired(self, tmp_path):
