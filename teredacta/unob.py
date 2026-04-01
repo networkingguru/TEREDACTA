@@ -162,9 +162,13 @@ class UnobInterface:
         try:
             conn.execute("PRAGMA busy_timeout = 10000")
             for idx_name, table, column in self._INDEXES:
-                conn.execute(
-                    f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table}({column})"
-                )
+                try:
+                    conn.execute(
+                        f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table}({column})"
+                    )
+                except sqlite3.OperationalError:
+                    # Table does not exist yet — skip index creation for now.
+                    pass
             conn.commit()
         finally:
             conn.close()
