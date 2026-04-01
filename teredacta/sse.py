@@ -9,9 +9,10 @@ logger = logging.getLogger(__name__)
 
 
 class SSEManager:
-    def __init__(self, poll_interval: float = 2.0, unob: Optional[UnobInterface] = None):
+    def __init__(self, poll_interval: float = 2.0, unob: Optional[UnobInterface] = None, max_subscribers: int = 0):
         self.poll_interval = poll_interval
         self.unob = unob
+        self.max_subscribers = max_subscribers
         self._subscribers: Set[asyncio.Queue] = set()
         self._task: Optional[asyncio.Task] = None
         self._last_stats: Optional[dict] = None
@@ -20,7 +21,9 @@ class SSEManager:
     def subscriber_count(self) -> int:
         return len(self._subscribers)
 
-    def subscribe(self) -> asyncio.Queue:
+    def subscribe(self) -> Optional[asyncio.Queue]:
+        if self.max_subscribers and len(self._subscribers) >= self.max_subscribers:
+            return None
         queue = asyncio.Queue(maxsize=100)
         self._subscribers.add(queue)
         if self._task is None or self._task.done():

@@ -74,7 +74,9 @@ async def login(request: Request):
     password = form.get("password", "")
     config = request.app.state.config
     auth = request.app.state.auth
-    if config.check_password(password):
+    loop = asyncio.get_running_loop()
+    valid = await loop.run_in_executor(None, config.check_password, password)
+    if valid:
         response = RedirectResponse("/admin", status_code=303)
         auth.create_session(response)
         return response

@@ -131,3 +131,20 @@ class TestSSESaturation:
 
         await asyncio.gather(*[churn(100) for _ in range(10)])
         assert sse.subscriber_count == 0
+
+
+@pytest.mark.stress
+@pytest.mark.timeout(90)
+class TestSSESubscriberCap:
+    @pytest.mark.asyncio
+    async def test_subscribe_rejects_over_cap(self):
+        sse = SSEManager(poll_interval=1.0, unob=None, max_subscribers=3)
+        q1 = sse.subscribe()
+        q2 = sse.subscribe()
+        q3 = sse.subscribe()
+        assert sse.subscriber_count == 3
+        q4 = sse.subscribe()
+        assert q4 is None
+        assert sse.subscriber_count == 3
+        for q in [q1, q2, q3]:
+            sse.unsubscribe(q)

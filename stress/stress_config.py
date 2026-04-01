@@ -22,6 +22,10 @@ READINESS_UNHEALTHY_SECONDS = 60  # Sustained unhealthy = test failure
 SSE_MIN_HOLD_SECONDS = 10
 SSE_MAX_HOLD_SECONDS = 60
 
+# Queue handling
+QUEUE_POLL_INTERVAL_SECONDS = 3
+QUEUE_MAX_WAIT_SECONDS = 120  # Give up waiting after this long
+
 # Load test phases (seconds)
 RAMP_UP_SECONDS = 30
 SUSTAINED_SECONDS = 240

@@ -23,12 +23,16 @@ class TeredactaConfig:
     port: int = 8000
     admin_password_hash: Optional[str] = None
     log_level: str = "info"
-    workers: int = 1
+    workers: int = 4
     session_timeout_minutes: int = 60
     sse_poll_interval_seconds: int = 2
     subprocess_timeout_seconds: int = 60
     health_pool_degraded_threshold: int = 3  # idle+uncreated <= this = degraded
     health_sse_degraded_threshold: int = 20  # subscribers >= this = degraded
+    max_pool_size: int = 32
+    max_concurrent_requests: int = 40
+    max_queue_size: int = 200
+    max_sse_subscribers: int = 50
     # NOTE: Default generates a random key on every process start, which
     # invalidates all existing sessions on restart. Persist a secret_key in
     # your config file (teredacta.yaml) to preserve sessions across restarts.

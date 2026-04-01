@@ -10,13 +10,26 @@ from fastapi.testclient import TestClient
 from teredacta.db_pool import ConnectionPool
 
 
+class TestWALMode:
+    def test_pool_enables_wal_mode(self, tmp_path):
+        db = tmp_path / "test.db"
+        sqlite3.connect(str(db)).close()
+        pool = ConnectionPool(str(db), max_size=2)
+        conn = pool.acquire()
+        mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+        pool.release(conn)
+        pool.close()
+        assert mode == "wal"
+
+
 class TestPoolStatus:
     def test_pool_status_empty_pool(self, tmp_path):
         db = tmp_path / "test.db"
         sqlite3.connect(str(db)).close()
         pool = ConnectionPool(str(db), max_size=4)
         status = pool.pool_status()
-        assert status == {"idle": 0, "in_use": 0, "capacity": 4}
+        # Pool pre-creates one connection during __init__ to enable WAL mode
+        assert status == {"idle": 1, "in_use": 0, "capacity": 4}
         pool.close()
 
     def test_pool_status_one_acquired(self, tmp_path):
@@ -115,6 +128,7 @@ class TestHealthEndpoints:
             log_path=str(tmp_path / "unobfuscator.log"),
             host="127.0.0.1",
             port=8000,
+            max_pool_size=8,
         )
         (tmp_path / "pdf_cache").mkdir(exist_ok=True)
         (tmp_path / "output").mkdir(exist_ok=True)
@@ -150,7 +164,7 @@ class TestHealthEndpoints:
         assert data["checks"]["db_pool"]["status"] == "ok"
 
     def test_readiness_returns_503_when_unhealthy(self, health_client):
-        app = health_client.app
+        app = health_client.app.app
         unob = app.state.unob
         conns = []
         for _ in range(8):
@@ -165,7 +179,7 @@ class TestHealthEndpoints:
             unob._release_db(c)
 
     def test_liveness_works_when_readiness_unhealthy(self, health_client):
-        app = health_client.app
+        app = health_client.app.app
         unob = app.state.unob
         conns = [unob._get_db() for _ in range(8)]
         assert health_client.get("/health/ready").status_code == 503
@@ -184,3 +198,34 @@ class TestHealthEndpoints:
             resp = health_client.get("/health/ready")
             assert resp.status_code == 503
             assert resp.json()["status"] == "unhealthy"
+
+
+class TestConfigFields:
+    def test_new_config_defaults(self):
+        from teredacta.config import TeredactaConfig
+        cfg = TeredactaConfig()
+        assert cfg.max_pool_size == 32
+        assert cfg.max_concurrent_requests == 40
+        assert cfg.max_queue_size == 200
+        assert cfg.max_sse_subscribers == 50
+
+    def test_config_loads_from_yaml(self, tmp_path):
+        from teredacta.config import load_config
+        cfg_file = tmp_path / "test.yaml"
+        cfg_file.write_text("max_pool_size: 16\nmax_concurrent_requests: 20\n")
+        cfg = load_config(str(cfg_file))
+        assert cfg.max_pool_size == 16
+        assert cfg.max_concurrent_requests == 20
+        assert cfg.max_queue_size == 200  # default
+
+
+class TestPoolSizeConfig:
+    def test_pool_uses_config_size(self, tmp_path):
+        from teredacta.db_pool import ConnectionPool
+        import sqlite3
+        db = tmp_path / "test.db"
+        sqlite3.connect(str(db)).close()
+        pool = ConnectionPool(str(db), max_size=16)
+        status = pool.pool_status()
+        assert status["capacity"] == 16
+        pool.close()

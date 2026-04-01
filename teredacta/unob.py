@@ -133,7 +133,10 @@ class UnobInterface:
                             "Check your TEREDACTA configuration."
                         )
                     self._pool = ConnectionPool(
-                        str(db_path), max_size=8, read_only=True, busy_timeout=5000
+                        str(db_path),
+                        max_size=self.config.max_pool_size,
+                        read_only=True,
+                        busy_timeout=5000,
                     )
         return self._pool.acquire()
 
