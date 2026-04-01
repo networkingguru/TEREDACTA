@@ -123,7 +123,8 @@ def start(host, port, config_path, pid_file, log_file):
     os.close(devnull)
     os.setsid()
     import atexit
-    atexit.register(lambda: os.path.exists(pid_file) and os.remove(pid_file))
+    _daemon_pid = os.getpid()
+    atexit.register(lambda: os.getpid() == _daemon_pid and os.path.exists(pid_file) and os.remove(pid_file))
     with open(log_file, "a") as log:
         os.dup2(log.fileno(), sys.stdout.fileno())
         os.dup2(log.fileno(), sys.stderr.fileno())
