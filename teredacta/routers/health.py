@@ -49,7 +49,7 @@ async def _readiness_checks(request: Request) -> JSONResponse:
     sub_count = sse.subscriber_count if sse else 0
     sse_degraded = config.health_sse_degraded_threshold
     sse_unhealthy = sse_degraded * 5
-    if sub_count >= sse_unhealthy:
+    if sub_count > sse_unhealthy:
         sse_status = "error"
     elif sub_count >= sse_degraded:
         sse_status = "degraded"

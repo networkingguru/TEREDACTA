@@ -115,10 +115,10 @@ class TestCompoundDeadlock:
         ) as client:
             resp = await client.get("/health/ready")
             data = resp.json()
-            # With 7 held, available = capacity(8) - in_use(7 or 8) <= 1
-            # Status should be degraded or unhealthy (the request itself may use a connection)
-            assert data["status"] in ("degraded", "unhealthy")
-            assert data["checks"]["db_pool"]["in_use"] >= 7
+            # With 7 held, available = capacity(8) - in_use(7) = 1
+            # The health endpoint never acquires a DB connection (design constraint)
+            assert data["status"] == "degraded"
+            assert data["checks"]["db_pool"]["in_use"] == 7
 
         for c in held:
             unob._release_db(c)

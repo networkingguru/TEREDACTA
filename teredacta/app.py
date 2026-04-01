@@ -19,6 +19,8 @@ class _HealthLogFilter(logging.Filter):
         if " /health/" in msg:
             return False
         return True
+
+
 from teredacta.auth import AuthManager
 from teredacta.config import TeredactaConfig
 from teredacta.entity_index import EntityIndex

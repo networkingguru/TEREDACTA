@@ -12,7 +12,6 @@ import math
 import random
 import time
 
-import gevent
 from locust import HttpUser, LoadTestShape, between, events, task
 
 from stress_config import (
