@@ -128,6 +128,7 @@ class TestHealthEndpoints:
             log_path=str(tmp_path / "unobfuscator.log"),
             host="127.0.0.1",
             port=8000,
+            max_pool_size=8,
         )
         (tmp_path / "pdf_cache").mkdir(exist_ok=True)
         (tmp_path / "output").mkdir(exist_ok=True)
@@ -197,3 +198,34 @@ class TestHealthEndpoints:
             resp = health_client.get("/health/ready")
             assert resp.status_code == 503
             assert resp.json()["status"] == "unhealthy"
+
+
+class TestConfigFields:
+    def test_new_config_defaults(self):
+        from teredacta.config import TeredactaConfig
+        cfg = TeredactaConfig()
+        assert cfg.max_pool_size == 32
+        assert cfg.max_concurrent_requests == 40
+        assert cfg.max_queue_size == 200
+        assert cfg.max_sse_subscribers == 50
+
+    def test_config_loads_from_yaml(self, tmp_path):
+        from teredacta.config import load_config
+        cfg_file = tmp_path / "test.yaml"
+        cfg_file.write_text("max_pool_size: 16\nmax_concurrent_requests: 20\n")
+        cfg = load_config(str(cfg_file))
+        assert cfg.max_pool_size == 16
+        assert cfg.max_concurrent_requests == 20
+        assert cfg.max_queue_size == 200  # default
+
+
+class TestPoolSizeConfig:
+    def test_pool_uses_config_size(self, tmp_path):
+        from teredacta.db_pool import ConnectionPool
+        import sqlite3
+        db = tmp_path / "test.db"
+        sqlite3.connect(str(db)).close()
+        pool = ConnectionPool(str(db), max_size=16)
+        status = pool.pool_status()
+        assert status["capacity"] == 16
+        pool.close()
