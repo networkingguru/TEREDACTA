@@ -217,6 +217,142 @@ For production deployment behind a reverse proxy, see [deploy/README.md](deploy/
 
 ---
 
+## Health Monitoring
+
+TEREDACTA includes built-in health endpoints for load balancers, monitoring tools, and stress testing.
+
+### Endpoints
+
+| Endpoint | Purpose | Auth Required |
+|---|---|---|
+| `GET /health/live` | Liveness probe — is the event loop alive? | No |
+| `GET /health/ready` | Readiness probe — can the server handle requests? | No |
+
+**Liveness** returns `{"status": "ok"}` if the process is responsive. Use this for Caddy/load balancer health checks and uptime monitors.
+
+**Readiness** checks DB pool availability and SSE subscriber count, returning `healthy`, `degraded`, or `unhealthy`:
+
+```json
+{
+  "status": "healthy",
+  "worker_pid": 12345,
+  "checks": {
+    "db_pool": {"status": "ok", "idle": 6, "in_use": 2, "capacity": 8},
+    "sse": {"status": "ok", "subscribers": 1},
+    "uptime_seconds": 3600.5
+  }
+}
+```
+
+Detailed metrics (pool counts, PID, uptime) are only included for localhost or authenticated admin requests. Public responses return only `{"status": "healthy"}`.
+
+### Thresholds
+
+| Component | Healthy | Degraded | Unhealthy |
+|---|---|---|---|
+| DB pool (available connections) | ≥3 | 1–2 | 0 |
+| SSE subscribers | <20 | 20–100 | >100 |
+
+Thresholds are configurable in `teredacta.yaml`:
+
+```yaml
+health_pool_degraded_threshold: 3   # available connections below this = degraded
+health_sse_degraded_threshold: 20   # subscribers at or above this = degraded
+```
+
+### Caddy Integration
+
+Add health checking to your Caddyfile reverse_proxy block:
+
+```
+reverse_proxy localhost:8000 {
+    health_uri /health/live
+    health_interval 5s
+}
+```
+
+See [deploy/README.md](deploy/README.md) for the full Caddy setup.
+
+---
+
+## Stress Testing
+
+TEREDACTA includes a comprehensive stress test suite for verifying stability under load. There are two complementary tools:
+
+### Pytest Stress Tests (CI-runnable)
+
+Fast, deterministic tests targeting specific failure modes. These run against an in-process test server with synthetic data — no external server needed.
+
+```bash
+# Install dev dependencies (if not already)
+pip install -e ".[dev]"
+
+# Run all stress tests
+pytest -m stress -v
+
+# Run a specific category
+pytest -m stress teredacta/tests/test_stress_db_pool.py -v
+pytest -m stress teredacta/tests/test_stress_compound_deadlock.py -v
+```
+
+**What's tested:**
+
+| Test File | What It Verifies |
+|---|---|
+| `test_stress_db_pool.py` | 50 threads competing for 8 connections, recovery after burst, no leaks on timeout |
+| `test_stress_sse.py` | 200+ subscribers, abandoned queue cleanup via broadcast eviction, rapid connect/disconnect cycling |
+| `test_stress_thread_pool.py` | Health endpoints respond when thread pool executor is fully saturated |
+| `test_stress_compound_deadlock.py` | **Production failure mode** — all executor threads blocked on pool.acquire() while event loop remains responsive |
+| `test_stress_mixed.py` | Concurrent HTTP requests + SSE + health checks don't deadlock; recovery after load |
+
+Stress tests are excluded from the default `pytest` run (via marker config). They only run when explicitly selected with `-m stress`.
+
+### Locust Load Tests (live server)
+
+Realistic sustained load testing against a running TEREDACTA instance — local or remote.
+
+```bash
+# Install locust dependencies
+pip install -e ".[stress]"
+
+# Run against local server (uses LoadTestShape: 30s ramp → 4min sustained → 30s cool-down → 15s recovery)
+locust -f stress/locustfile.py --headless --host http://localhost:8000
+
+# Run against your VPS
+export STRESS_ADMIN_PASSWORD=your-admin-password
+locust -f stress/locustfile.py --headless --host https://your-server.com
+
+# Interactive web UI (open http://localhost:8089)
+locust -f stress/locustfile.py --host https://your-server.com
+```
+
+**Load profile:**
+
+| Phase | Duration | Users |
+|---|---|---|
+| Warm-up | 0–30s | 0 → 200 |
+| Sustained | 30s–4m30s | 200 |
+| Cool-down | 4m30s–5m | 200 → 0 |
+| Recovery | 5m–5m15s | 1 (health monitor only) |
+
+**User profiles:**
+
+| Profile | Weight | Behavior |
+|---|---|---|
+| WebUser | 60% | Browses documents, recoveries, highlights, entity explorer |
+| SSEUser | 15% | Opens SSE connections (10–60s), mix of graceful/ungraceful disconnects |
+| AdminUser | 20% | Dashboard, daemon status, config, logs |
+| HealthMonitor | 5% | Polls `/health/live` and `/health/ready`, flags sustained unhealthy status |
+
+**Success criteria:**
+- Liveness probe never fails
+- Readiness probe does not report "unhealthy" for more than 60 seconds
+- Server recovers to "healthy" after load subsides
+
+See [stress/README.md](stress/README.md) for full configuration options.
+
+---
+
 ## Troubleshooting
 
 ### "Database not found" on startup
