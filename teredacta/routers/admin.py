@@ -293,7 +293,8 @@ def entity_index_status(request: Request):
         return Response(status_code=403)
     entity_idx = request.app.state.entity_index
     unob = request.app.state.unob
-    status = entity_idx.get_status(unob.config.db_path)
+    max_merge_ts = unob.get_max_merge_ts()
+    status = entity_idx.get_status(max_merge_ts=max_merge_ts)
     state = status["state"]
     if state == "not_built":
         return HTMLResponse('<span class="text-muted">Not built</span>')

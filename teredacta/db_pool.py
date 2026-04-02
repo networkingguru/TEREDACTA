@@ -41,6 +41,7 @@ class ConnectionPool:
         )
         conn.row_factory = sqlite3.Row
         conn.execute(f"PRAGMA busy_timeout = {self._busy_timeout}")
+        conn.execute("PRAGMA mmap_size = 8589934592")
         if self._read_only:
             conn.execute("PRAGMA query_only = ON")
         return conn

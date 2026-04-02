@@ -270,6 +270,8 @@ class EntityIndex:
 
     def __init__(self, db_path: str):
         self.db_path = db_path
+        self._status_cache: dict | None = None
+        self._status_cache_time: float = 0.0
 
     # -- internal helpers --------------------------------------------------
 
@@ -398,6 +400,8 @@ class EntityIndex:
         conn.commit()
         conn.close()
 
+        self._status_cache = None  # invalidate so get_status() reflects the new build
+
         return {
             "entities": entity_count,
             "mentions": total_mentions,
@@ -406,15 +410,28 @@ class EntityIndex:
 
     # -- status ------------------------------------------------------------
 
-    def get_status(self, unob_db_path: str | None = None) -> dict:
-        """Return index state: not_built, ready, or stale."""
+    def get_status(
+        self,
+        unob_db_path: str | None = None,
+        max_merge_ts: str | None = None,
+    ) -> dict:
+        """Return index state: not_built, ready, or stale (cached 60s).
+
+        If *max_merge_ts* is provided it is used for the staleness check
+        instead of opening a separate connection to the unobfuscator DB.
+        Callers with access to the connection pool should pass this to
+        avoid a cold-cache penalty on the 6 GB database.
+        """
+        now = time.monotonic()
+        if self._status_cache is not None and (now - self._status_cache_time) < 60:
+            return self._status_cache
+
         db = Path(self.db_path)
         if not db.exists():
             return {"state": "not_built", "entities": 0, "mentions": 0, "built_at": None}
 
         conn = self._get_db(readonly=True)
         try:
-            # Check if schema exists
             tables = {r[0] for r in conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'"
             ).fetchall()}
@@ -433,8 +450,12 @@ class EntityIndex:
 
             state = "ready"
 
-            # Staleness check: compare against Unobfuscator's merge_results
-            if unob_db_path and Path(unob_db_path).exists():
+            # Staleness check: prefer caller-supplied timestamp (uses
+            # the warm connection pool) over opening a cold connection.
+            if max_merge_ts is not None:
+                if max_merge_ts > built_at:
+                    state = "stale"
+            elif unob_db_path and Path(unob_db_path).exists():
                 src = sqlite3.connect(unob_db_path, timeout=5.0)
                 src.row_factory = sqlite3.Row
                 try:
@@ -446,12 +467,15 @@ class EntityIndex:
                 finally:
                     src.close()
 
-            return {
+            result = {
                 "state": state,
                 "entities": entity_count,
                 "mentions": mention_count,
                 "built_at": built_at,
             }
+            self._status_cache = result
+            self._status_cache_time = now
+            return result
         except sqlite3.OperationalError:
             return {"state": "not_built", "entities": 0, "mentions": 0, "built_at": None}
         finally:

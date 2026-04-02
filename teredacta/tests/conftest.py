@@ -45,7 +45,8 @@ def mock_db(tmp_dir):
             pdf_processed BOOLEAN DEFAULT 0,
             text_source TEXT,
             ocr_processed BOOLEAN DEFAULT 0,
-            page_tags TEXT
+            page_tags TEXT,
+            has_redactions INTEGER DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS document_fingerprints (
             doc_id TEXT PRIMARY KEY REFERENCES documents(id),

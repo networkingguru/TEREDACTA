@@ -18,10 +18,10 @@ def populated_db(mock_db):
     # Insert documents
     conn.execute(
         "INSERT INTO documents (id, source, release_batch, original_filename, "
-        "page_count, description, extracted_text, text_processed, pdf_processed) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "page_count, description, extracted_text, text_processed, pdf_processed, has_redactions) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         ("doc-001", "doj", "VOL00001", "letter.pdf", 3,
-         "Letter from JE", "Dear [REDACTED], meeting at...", 1, 0),
+         "Letter from JE", "Dear [REDACTED], meeting at...", 1, 0, 1),
     )
     conn.execute(
         "INSERT INTO documents (id, source, release_batch, original_filename, "

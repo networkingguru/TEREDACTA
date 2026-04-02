@@ -289,5 +289,17 @@ def reset_password(config_path, remove):
     click.echo("Admin password updated successfully.")
 
 
+@cli.command()
+@click.option("--config", "config_path", default=None, help="Path to config file")
+def migrate(config_path):
+    """Run performance migrations (has_redactions column, FTS5 index)."""
+    cfg = _load_and_patch_cfg(config_path, None, None)
+    from teredacta.unob import UnobInterface
+    unob = UnobInterface(cfg)
+    click.echo("Running migrations...")
+    unob.run_migration()
+    click.echo("Done.")
+
+
 if __name__ == "__main__":
     cli()

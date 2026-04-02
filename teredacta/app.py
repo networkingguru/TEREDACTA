@@ -68,6 +68,22 @@ def create_app(config: TeredactaConfig) -> FastAPI:
     fastapi_app.state.auth = AuthManager(config)
     fastapi_app.state.entity_index = EntityIndex(config.entity_db_path)
 
+    # Warm up DBs in background so startup isn't blocked
+    import threading
+
+    def _background_warm_up():
+        fastapi_app.state.unob.warm_up()
+        # Also prime the entity index (Explore + Highlights tabs)
+        try:
+            ei = fastapi_app.state.entity_index
+            max_ts = fastapi_app.state.unob.get_max_merge_ts()
+            ei.get_status(max_merge_ts=max_ts)
+            ei.get_entities_with_samples(limit=20)
+        except Exception:
+            pass
+
+    threading.Thread(target=_background_warm_up, daemon=True).start()
+
     from teredacta.sse import SSEManager
     fastapi_app.state.sse = SSEManager(poll_interval=config.sse_poll_interval_seconds, unob=fastapi_app.state.unob, max_subscribers=config.max_sse_subscribers)
 

@@ -1,5 +1,6 @@
 import html
 import json
+import logging
 import os
 import platform
 import shlex
@@ -98,6 +99,8 @@ class UnobInterface:
         ("idx_docs_text_id", "documents", "text_processed, id"),
         ("idx_docs_pdf_id", "documents", "pdf_processed, id"),
         ("idx_docs_source_id", "documents", "source, id"),
+        ("idx_merge_created_at", "merge_results", "created_at"),
+        ("idx_merge_recovered", "merge_results", "recovered_count"),
     ]
 
     def __init__(self, config: TeredactaConfig):
@@ -106,6 +109,9 @@ class UnobInterface:
         self._common_cache_time: float = 0.0
         self._stats_cache: Optional[dict] = None
         self._stats_cache_time: float = 0.0  # monotonic
+        self._match_groups_count_cache: Optional[int] = None
+        self._match_groups_count_time: float = 0.0
+        self._fts_available: Optional[bool] = None
         self._pool = None  # Lazy-initialized ConnectionPool
         self._pool_lock = threading.Lock()
 
@@ -173,6 +179,133 @@ class UnobInterface:
         finally:
             conn.close()
 
+    def warm_up(self):
+        """Run the same queries each tab uses to page data into OS cache.
+
+        Best-effort — failures are logged and swallowed so a cold DB
+        never prevents startup.
+        """
+        try:
+            conn = self._get_db()
+        except FileNotFoundError:
+            return
+        try:
+            # /documents tab: paginated listing
+            conn.execute(
+                "SELECT COUNT(*) FROM documents"
+            ).fetchone()
+            conn.execute(
+                "SELECT id, source, release_batch, original_filename, "
+                "page_count, description, text_processed, pdf_processed "
+                "FROM documents ORDER BY id LIMIT 50"
+            ).fetchall()
+
+            # /recoveries tab: top recoveries
+            conn.execute(
+                "SELECT group_id, recovered_count, recovered_segments "
+                "FROM merge_results WHERE recovered_count > 0 "
+                "ORDER BY recovered_count DESC LIMIT 50"
+            ).fetchall()
+
+            # /highlights tab: common unredactions (json_each on top 500)
+            conn.execute(
+                "SELECT mr.group_id, value FROM "
+                "(SELECT group_id, recovered_segments FROM merge_results "
+                " WHERE recovered_count > 0 AND recovered_segments IS NOT NULL "
+                " ORDER BY recovered_count DESC LIMIT 500) mr, "
+                "json_each(mr.recovered_segments) WHERE value IS NOT NULL"
+            ).fetchall()
+
+            # /groups tab: match groups with member stats
+            conn.execute(
+                "SELECT mg.group_id, mg.merged, mg.created_at, "
+                "  COUNT(mgm.doc_id) as member_count, "
+                "  AVG(mgm.similarity) as avg_similarity "
+                "FROM match_groups mg "
+                "LEFT JOIN match_group_members mgm ON mg.group_id = mgm.group_id "
+                "GROUP BY mg.group_id ORDER BY mg.group_id DESC LIMIT 50"
+            ).fetchall()
+        except Exception as exc:
+            logging.getLogger(__name__).warning("warm_up failed: %s", exc)
+        finally:
+            self._release_db(conn)
+
+    def run_migration(self):
+        """Run performance migrations: has_redactions column + FTS5 index.
+
+        Opens the DB in write mode (bypasses read-only pool). Idempotent.
+        """
+        logger = logging.getLogger(__name__)
+        db_path = Path(self.config.db_path)
+        if not db_path.exists():
+            raise FileNotFoundError(f"Database not found at {db_path}")
+
+        conn = sqlite3.connect(str(db_path), timeout=30.0)
+        conn.execute("PRAGMA busy_timeout = 30000")
+        try:
+            # 1. Add has_redactions column if missing
+            columns = {r[1] for r in conn.execute("PRAGMA table_info(documents)").fetchall()}
+            if "has_redactions" not in columns:
+                logger.info("Adding has_redactions column...")
+                conn.execute("ALTER TABLE documents ADD COLUMN has_redactions INTEGER DEFAULT 0")
+                conn.commit()
+
+            # 2. Backfill has_redactions for rows that haven't been set
+            updated = conn.execute(
+                "UPDATE documents SET has_redactions = 1 "
+                "WHERE (has_redactions IS NULL OR has_redactions = 0) AND ("
+                "  extracted_text LIKE '%[REDACTED]%' "
+                "  OR extracted_text LIKE '%[b(6)]%' "
+                "  OR extracted_text LIKE '%XXXXXXXXX%'"
+                ")"
+            ).rowcount
+            if updated:
+                logger.info("Backfilled has_redactions for %d documents", updated)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_docs_has_redactions "
+                "ON documents(has_redactions)"
+            )
+            conn.commit()
+
+            # 3. Create FTS5 virtual table if missing
+            tables = {r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()}
+            if "documents_fts" not in tables:
+                logger.info("Creating FTS5 index on id, original_filename...")
+                conn.execute(
+                    "CREATE VIRTUAL TABLE documents_fts USING fts5("
+                    "  id, original_filename, content='documents', content_rowid='rowid'"
+                    ")"
+                )
+                conn.execute(
+                    "INSERT INTO documents_fts(documents_fts) VALUES('rebuild')"
+                )
+                conn.commit()
+                logger.info("FTS5 index built")
+            else:
+                logger.info("FTS5 table already exists, skipping rebuild")
+
+        finally:
+            conn.close()
+            self._fts_available = None  # invalidate cache after migration
+
+    def get_max_merge_ts(self) -> str | None:
+        """Return MAX(created_at) from merge_results using the warm pool."""
+        try:
+            conn = self._get_db()
+        except FileNotFoundError:
+            return None
+        try:
+            row = conn.execute(
+                "SELECT MAX(created_at) as max_ts FROM merge_results"
+            ).fetchone()
+            return row["max_ts"] if row else None
+        except Exception:
+            return None
+        finally:
+            self._release_db(conn)
+
     # --- Stats ---
 
     def get_stats(self) -> dict:
@@ -223,6 +356,19 @@ class UnobInterface:
 
     # --- Documents ---
 
+    def _has_fts(self, conn: sqlite3.Connection) -> bool:
+        """Check if the FTS5 virtual table exists (cached after first check)."""
+        if self._fts_available is not None:
+            return self._fts_available
+        try:
+            row = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='documents_fts'"
+            ).fetchone()
+            self._fts_available = row is not None
+        except sqlite3.OperationalError:
+            self._fts_available = False
+        return self._fts_available
+
     def get_documents(
         self,
         page: int = 1,
@@ -240,27 +386,47 @@ class UnobInterface:
             cols = ("id, source, release_batch, original_filename, "
                     "page_count, description, text_processed, pdf_processed")
 
-            # Search uses GLOB for substring matching on original_filename
-            # and id. UNION merges results across case variants.
-            # If extra_doc_ids provided (from entity search), include them
-            # via an OR clause so pagination is respected.
             if search:
-                # Escape GLOB metacharacters before building patterns
-                safe_search = re.sub(r'([\[\]*?])', r'[\1]', search)
-                # Build deduplicated set of GLOB patterns (substring: *term*)
-                patterns = list(dict.fromkeys([
-                    "*" + safe_search.upper() + "*",
-                    "*" + safe_search.lower() + "*",
-                    "*" + safe_search + "*",
-                ]))
-                # UNION across both columns with each unique pattern
-                parts = []
-                params_search: list = []
-                for col in ("original_filename", "id"):
-                    for pat in patterns:
-                        parts.append(f"SELECT {cols} FROM documents WHERE {col} GLOB ?")
-                        params_search.append(pat)
-                # Include entity-linked doc_ids in the same query
+                # Try FTS5 first (fast word-based search)
+                fts_available = self._has_fts(conn)
+                if fts_available:
+                    fts_term = search.replace('"', '""')
+                    fts_failed = False
+                    try:
+                        parts_fts = [
+                            f"SELECT {cols} FROM documents "
+                            f"WHERE rowid IN ("
+                            f"  SELECT rowid FROM documents_fts "
+                            f"  WHERE documents_fts MATCH ?"
+                            f")"
+                        ]
+                        params_fts: list = [f'"{fts_term}"']
+                        if extra_doc_ids:
+                            placeholders = ",".join("?" for _ in extra_doc_ids)
+                            parts_fts.append(
+                                f"SELECT {cols} FROM documents WHERE id IN ({placeholders})"
+                            )
+                            params_fts.extend(sorted(extra_doc_ids))
+                        query_fts = " UNION ".join(parts_fts) + " ORDER BY id LIMIT ? OFFSET ?"
+                        rows = conn.execute(
+                            query_fts, params_fts + [per_page + 1, offset]
+                        ).fetchall()
+                    except sqlite3.OperationalError:
+                        rows = []
+                        fts_failed = True
+
+                    if not fts_failed:
+                        rows, total = self._estimate_total(rows, per_page, offset)
+                        return [dict(row) for row in rows], total
+
+                # Fallback: LIKE on id and original_filename (used when FTS unavailable or errored)
+                safe_search = search.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+                like_pattern = f"%{safe_search}%"
+                parts = [
+                    f"SELECT {cols} FROM documents WHERE original_filename LIKE ? ESCAPE '!'",
+                    f"SELECT {cols} FROM documents WHERE id LIKE ? ESCAPE '!'",
+                ]
+                params_search: list = [like_pattern, like_pattern]
                 if extra_doc_ids:
                     placeholders = ",".join("?" for _ in extra_doc_ids)
                     parts.append(f"SELECT {cols} FROM documents WHERE id IN ({placeholders})")
@@ -270,8 +436,7 @@ class UnobInterface:
                     query, params_search + [per_page + 1, offset]
                 ).fetchall()
                 rows, total = self._estimate_total(rows, per_page, offset)
-                docs = [dict(row) for row in rows]
-                return docs, total
+                return [dict(row) for row in rows], total
 
             where_clauses = []
             params: list = []
@@ -282,10 +447,7 @@ class UnobInterface:
                 where_clauses.append("release_batch = ?")
                 params.append(batch)
             if has_redactions is True:
-                where_clauses.append(
-                    "(extracted_text LIKE '%[REDACTED]%' OR extracted_text LIKE '%[b(6)]%' "
-                    "OR extracted_text LIKE '%XXXXXXXXX%')"
-                )
+                where_clauses.append("has_redactions = 1")
             if stage:
                 if stage == "text_processed":
                     where_clauses.append("text_processed = 1")
@@ -374,7 +536,17 @@ class UnobInterface:
     ) -> tuple[list[dict], int]:
         conn = self._get_db()
         try:
-            total = conn.execute("SELECT COUNT(*) FROM match_groups").fetchone()[0]
+            now = time.monotonic()
+            if (
+                self._match_groups_count_cache is not None
+                and (now - self._match_groups_count_time) < 30
+            ):
+                total = self._match_groups_count_cache
+            else:
+                total = conn.execute("SELECT COUNT(*) FROM match_groups").fetchone()[0]
+                self._match_groups_count_cache = total
+                self._match_groups_count_time = now
+
             offset = (page - 1) * per_page
             rows = conn.execute("""
                 SELECT mg.group_id, mg.merged, mg.created_at,

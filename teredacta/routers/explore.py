@@ -8,9 +8,12 @@ router = APIRouter()
 def explore_page(request: Request):
     templates = request.app.state.templates
     entity_index = request.app.state.entity_index
-    config = request.app.state.config
+    unob = request.app.state.unob
 
-    status = entity_index.get_status(unob_db_path=config.db_path)
+    # Fetch staleness timestamp via the warm connection pool instead of
+    # letting get_status() open a cold separate connection to the 6 GB DB.
+    max_merge_ts = unob.get_max_merge_ts()
+    status = entity_index.get_status(max_merge_ts=max_merge_ts)
     entity_index_ready = status["state"] in ("ready", "stale")
     entity_index_stale = status["state"] == "stale"
     entity_index_built_at = status.get("built_at", "")
