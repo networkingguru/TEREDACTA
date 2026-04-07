@@ -4,6 +4,12 @@
 {% block content %}
 <h1>Highlights</h1>
 
+<p style="color:var(--text-secondary);margin-bottom:1.5rem;max-width:720px;line-height:1.6;">
+    TEREDACTA automatically cross-references 1.4 million government documents from the Congressional Epstein/Maxwell releases.
+    When the same document was released multiple times with different redaction patterns, the software recovered the hidden text.
+    <span style="color:var(--accent-green);">Green highlighted text</span> on recovery pages marks passages that were redacted by the government but recovered through this process.
+</p>
+
 <!-- Top Recoveries -->
 <section style="margin-bottom:2rem;">
     <h2 style="font-size:1.1rem;margin-bottom:0.75rem;">Top Recoveries</h2>
@@ -50,7 +56,7 @@
 
 <!-- Common Unredactions -->
 <section style="margin-bottom:2rem;">
-    <h2 style="font-size:1.1rem;margin-bottom:0.75rem;">Common Unredactions</h2>
+    <h2 style="font-size:1.1rem;margin-bottom:0.75rem;">Frequently Recovered Text</h2>
     {% if common %}
     <div class="common-unredactions">
         {% for item in common %}
@@ -61,7 +67,7 @@
         {% endfor %}
     </div>
     {% else %}
-    <p style="color:var(--text-secondary);">No common unredactions found yet.</p>
+    <p style="color:var(--text-secondary);">No frequently recovered text found yet.</p>
     {% endif %}
 </section>
 {% endblock %}
