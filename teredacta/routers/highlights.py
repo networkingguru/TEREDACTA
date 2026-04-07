@@ -41,6 +41,19 @@ def highlights_page(request: Request):
     except FileNotFoundError:
         pass
 
+    # Featured recovery (pinned at top of highlights)
+    featured = None
+    try:
+        featured_detail = unob.get_recovery_detail(8022)
+        if featured_detail:
+            featured = {
+                "group_id": 8022,
+                "recovered_count": featured_detail["recovered_count"],
+                "headline": _get_headline(featured_detail.get("recovered_segments", [])),
+            }
+    except Exception:
+        pass
+
     # Top entities from entity index (single query with samples)
     top_entities = []
     try:
@@ -61,4 +74,5 @@ def highlights_page(request: Request):
         "top_recoveries": top_recoveries,
         "top_entities": top_entities,
         "common": common,
+        "featured": featured,
     })

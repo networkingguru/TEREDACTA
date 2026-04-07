@@ -10,6 +10,18 @@
     <span style="color:var(--accent-green);">Green highlighted text</span> on recovery pages marks passages that were redacted by the government but recovered through this process.
 </p>
 
+{% if featured %}
+<section style="margin-bottom:2rem;">
+    <h2 style="font-size:1.1rem;margin-bottom:0.75rem;">Featured Recovery</h2>
+    <a href="/recoveries/{{ featured.group_id }}" style="text-decoration:none;color:inherit;">
+        <div class="stat-card" style="text-align:left;cursor:pointer;border-left:3px solid var(--accent-green);">
+            <p style="font-size:0.85rem;margin-bottom:0.5rem;color:var(--text-primary);">{{ featured.headline or "Recovery #" ~ featured.group_id }}</p>
+            <span class="entity-type-badge" style="background:rgba(102,187,106,0.2);color:#66bb6a;">{{ featured.recovered_count }} passage{{ 's' if featured.recovered_count != 1 else '' }} recovered</span>
+        </div>
+    </a>
+</section>
+{% endif %}
+
 <!-- Top Recoveries -->
 <section style="margin-bottom:2rem;">
     <h2 style="font-size:1.1rem;margin-bottom:0.75rem;">Top Recoveries</h2>
