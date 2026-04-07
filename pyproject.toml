@@ -30,6 +30,9 @@ stress = [
     "locust>=2.20.0",
     "sseclient-py>=1.8.0",
 ]
+assets = [
+    "Pillow>=10.0.0",
+]
 
 [project.scripts]
 teredacta = "teredacta.__main__:cli"
