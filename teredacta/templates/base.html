@@ -4,7 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}TEREDACTA{% endblock %}</title>
+    <meta name="description" content="{% block meta_description %}Browse 5,600+ recovered redactions from 1.4 million government documents in the Congressional Epstein/Maxwell releases.{% endblock %}">
     <meta name="csrf-token" content="{{ csrf_token }}">
+    <!-- Open Graph -->
+    <meta property="og:title" content="{% block og_title %}TEREDACTA — Recovered Government Redactions{% endblock %}">
+    <meta property="og:description" content="{% block og_description %}5,600+ redacted passages recovered from 1.4 million Congressional Epstein/Maxwell documents by cross-referencing inconsistent redaction patterns.{% endblock %}">
+    <meta property="og:image" content="{% block og_image %}https://teredacta.counting-to-infinity.com/static/img/og-card.jpg{% endblock %}">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://teredacta.counting-to-infinity.com{{ request.url.path }}">
+    <!-- Twitter/X Card (falls back to OG tags for title/description/image) -->
+    <meta name="twitter:card" content="summary_large_image">
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="/static/img/favicon.png">
     <link rel="stylesheet" href="/static/css/app.css">
     <script src="/static/js/htmx.min.js"></script>
 </head>

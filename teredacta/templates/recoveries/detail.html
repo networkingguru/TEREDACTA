@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Recovery #{{ group_id }} — TEREDACTA{% endblock %}
 {% block nav_recoveries %}active{% endblock %}
+{% block meta_description %}Recovery #{{ group_id }} — {{ recovery.recovered_count }} redacted passages recovered by cross-referencing multiple government releases of the same document.{% endblock %}
+{% block og_title %}Recovery #{{ group_id }} — {{ recovery.recovered_count }} Redactions Recovered | TEREDACTA{% endblock %}
+{% block og_description %}{{ recovery.recovered_count }} redacted passages recovered from government Epstein/Maxwell documents by cross-referencing inconsistent redaction patterns across multiple releases.{% endblock %}
 {% block content %}
 <h1>Recovery #{{ group_id }} <span style="color:var(--text-secondary);font-size:1rem;" title="{{ recovery.recovered_count }} redacted passages were recovered by cross-referencing overlapping document releases">— {{ recovery.recovered_count }} redactions recovered</span></h1>
 
