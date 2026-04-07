@@ -18,8 +18,27 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 # --- Config ---
-DB_PATH = "/Users/brianhill/Scripts/Unobfuscator/data/unobfuscator.db"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _find_db_path() -> str:
+    """Resolve DB path from env, config, or default."""
+    if os.environ.get("UNOBFUSCATOR_DB"):
+        return os.environ["UNOBFUSCATOR_DB"]
+    # Try teredacta.yaml
+    import yaml
+    for cfg in [PROJECT_ROOT / "teredacta.yaml", Path.home() / ".teredacta" / "config.yaml"]:
+        if cfg.exists():
+            with open(cfg) as f:
+                data = yaml.safe_load(f) or {}
+            if data.get("db_path"):
+                return data["db_path"]
+    raise FileNotFoundError(
+        "Cannot find Unobfuscator DB. Set UNOBFUSCATOR_DB env var or ensure teredacta.yaml exists."
+    )
+
+
+DB_PATH = _find_db_path()
 ASSETS_DIR = PROJECT_ROOT / "assets" / "threads"
 STATIC_DIR = PROJECT_ROOT / "teredacta" / "static" / "img"
 SITE_URL = "teredacta.counting-to-infinity.com"

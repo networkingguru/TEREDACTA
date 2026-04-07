@@ -12,8 +12,11 @@
     <meta property="og:image" content="{% block og_image %}https://teredacta.counting-to-infinity.com/static/img/og-card.jpg{% endblock %}">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://teredacta.counting-to-infinity.com{{ request.url.path }}">
-    <!-- Twitter/X Card (falls back to OG tags for title/description/image) -->
+    <!-- Twitter/X Card -->
     <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{% block twitter_title %}TEREDACTA — Recovered Government Redactions{% endblock %}">
+    <meta name="twitter:description" content="{% block twitter_description %}5,600+ redacted passages recovered from 1.4M Congressional Epstein/Maxwell documents.{% endblock %}">
+    <meta name="twitter:image" content="https://teredacta.counting-to-infinity.com/static/img/og-card.jpg">
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="/static/img/favicon.png">
     <link rel="stylesheet" href="/static/css/app.css">
