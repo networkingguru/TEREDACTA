@@ -8,11 +8,27 @@
 
 ---
 
+## Key Findings
+
+TEREDACTA has recovered thousands of redacted passages from the Congressional Epstein/Maxwell document releases. Among them:
+
+- **MCC psychologist email (10 days before Epstein's death):** Internal BOP debate over whether Epstein's first incident was *"a ploy, if someone else did it, or he just gave himself a 'rug burn' with the sheet."* ([Recovery #8022](https://teredacta.counting-to-infinity.com/recoveries/8022?utm_source=github&utm_medium=readme))
+- **MCC staff interview list (2 days after Epstein's death):** OIG email mapping staff roles across every shift at MCC on August 9 — which positions covered each shift, which role authored the cellmate memo, which role was notified, and the person flagged as *"potentially in charge of no reassignment."* ([Recovery #2924](https://teredacta.counting-to-infinity.com/recoveries/2924?utm_source=github&utm_medium=readme))
+- **FBI evidence log (113 recovered passages):** Extensive case records from the child sex trafficking investigation, including evidence items and seizure inventory from Epstein's safe at 9 East 71st Street. ([Recovery #8848](https://teredacta.counting-to-infinity.com/recoveries/8848?utm_source=github&utm_medium=readme))
+- **Maxwell's Vanity Fair damage control:** Ghislaine Maxwell drafting PR responses to a journalist, in her own words: *"I MET HER WHEN SHE WAS 17 AND LIVING WITH HER FIANCE AND AVOID ALL THE OTHER STUFF."* ([Recovery #14414](https://teredacta.counting-to-infinity.com/recoveries/14414?utm_source=github&utm_medium=readme))
+- **Missing teenager in flight logs:** SDNY prosecutors discussing a missing Florida teenager in connection with Epstein's flight records. ([Recovery #7726](https://teredacta.counting-to-infinity.com/recoveries/7726?utm_source=github&utm_medium=readme))
+
+### Try It
+
+**[Browse all 5,600+ recovered redactions](https://teredacta.counting-to-infinity.com/highlights?utm_source=github&utm_medium=readme)** from the Congressional Epstein/Maxwell releases.
+
+---
+
 ## What It Does
 
 When government agencies release the same documents multiple times with different redaction patterns, [Unobfuscator](https://github.com/networkingguru/Unobfuscator) cross-references the releases and recovers the hidden text. TEREDACTA makes those recoveries explorable through an investigative web interface designed for reporters and researchers.
 
-**Currently deployed against 1.4 million documents from the Congressional Epstein/Maxwell releases** (DOJ volumes, House Oversight releases), with 6,400+ recovered redactions across 15,220 document match groups.
+**Currently deployed against 1.4 million documents from the Congressional Epstein/Maxwell releases** (DOJ volumes, House Oversight releases), with 5,600+ substantive recovered redactions across 15,220 document match groups.
 
 ### Key Features
 
