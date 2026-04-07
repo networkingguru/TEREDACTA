@@ -1,8 +1,8 @@
-# Demo Recovery: MCC Staffing Memo — 48 Hours Before Epstein's Death
+# Demo Recovery: MCC Staff Interview List — Two Days After Epstein's Death
 
 ## Overview
 
-TEREDACTA's cross-document analysis recovered **10 out of 10 redacted segments** (100% recovery rate) from an internal DOJ/OIG email chain dated **August 12, 2019** — two days after Jeffrey Epstein was found dead in his cell at the Metropolitan Correctional Center in New York. The recovered text reveals the identities, roles, and shift assignments of BOP staff involved in Epstein's custody, including annotations about who was responsible for the decision that left Epstein without a cellmate.
+TEREDACTA's cross-document analysis recovered **10 out of 10 redacted segments** (100% recovery rate) from an internal DOJ/OIG email chain dated **August 12, 2019** — two days after Jeffrey Epstein was found dead in his cell at the Metropolitan Correctional Center in New York. The recovered text reveals the roles, shift assignments, and responsibility annotations of BOP staff involved in Epstein's custody, including annotations about who was responsible for the decision that left Epstein without a cellmate.
 
 None of this recovered content appears in any public reporting as of April 2026.
 
@@ -58,13 +58,13 @@ The asterisked entries (\*) indicate individuals flagged for priority or special
 
 ## Why This Matters
 
-The central unanswered question in the Epstein case is how a high-profile inmate on suicide watch ended up alone in his cell with no functioning camera coverage. This recovery reveals:
+The central unanswered question in the Epstein case is how a high-profile inmate — removed from suicide watch 12 days earlier — ended up alone in his cell with only unusable camera footage. This recovery reveals:
 
 1. **The cellmate gap was known and documented.** Someone at MCC wrote a memo specifically requesting a cellmate for Epstein. Someone else was notified. Neither acted.
 
 2. **Investigators identified who was responsible.** Entry #10 — "potentially in charge of no reassignment" — shows the OIG had already zeroed in on who made (or failed to make) the cellmate decision, and that person was flagged for FBI interview.
 
-3. **Complete shift coverage was mapped.** The annotations reconstruct exactly which staff were on duty across every shift on August 9, 2019, creating a minute-by-minute accountability chain for Epstein's final 24 hours.
+3. **Complete shift coverage was mapped.** The annotations reconstruct exactly which staff were on duty across every shift on August 9, 2019, creating a shift-by-shift accountability chain for Epstein's final 24 hours.
 
 4. **The redactions were inconsistent, not principled.** The same information was redacted in some copies and left visible in others — suggesting the redactions were applied mechanically rather than through deliberate classification review.
 
@@ -77,6 +77,26 @@ The central unanswered question in the Epstein case is how a high-profile inmate
 - **Anchor length:** 29–40 characters of matching context on each side of every recovery
 - **Match group size:** 18 documents, similarity 1.0
 - **Processing time:** Automatic (no human guidance required)
+
+---
+
+## How to Verify This Recovery
+
+Anyone can independently confirm these results using the original government documents:
+
+1. **Download the source documents** from [justice.gov/epstein](https://www.justice.gov/epstein). Search for these Bates numbers across the available data sets:
+   - EFTA00066543 (heavily redacted version)
+   - EFTA00173655 (less-redacted version)
+
+2. **Compare the two versions manually.** Open both PDFs side by side. The heavily-redacted version has entries 3–12 replaced with `[Redacted]`. The less-redacted version shows role and shift annotations for those same entries.
+
+3. **Verify the anchor context.** Each recovered passage is bounded by 29–40 characters of identical text on both sides — the surrounding context that proves the alignment is correct.
+
+### Limitations
+
+- **Names were NOT recovered.** The less-redacted version shows roles and shift annotations, not actual staff names. All versions redact the names themselves.
+- **"High" confidence** means each recovered segment has 29+ characters of verified matching context on both sides. No segment was inferred or interpolated — each is a direct text extraction from a less-redacted copy.
+- **The recovery is deterministic.** Running the same 18 documents through the merger produces identical output every time.
 
 ---
 
