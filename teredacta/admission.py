@@ -142,8 +142,10 @@ class AdmissionState:
 class AdmissionMiddleware:
     """ASGI middleware that limits concurrent requests with a FIFO queue."""
 
-    def __init__(self, app, max_concurrent: int = 40, max_queue: int = 200):
+    def __init__(self, app, max_concurrent: int = 40, max_queue: int = 200,
+                 secure_cookies: bool = False):
         self.app = app
+        self.secure_cookies = secure_cookies
         self.state = AdmissionState(
             max_concurrent=max_concurrent, max_queue=max_queue
         )
@@ -259,8 +261,9 @@ class AdmissionMiddleware:
         est_wait = self.state.estimate_wait(position)
         html = _queue_page_html(ticket.id, position, est_wait, redirect_url)
 
+        secure_flag = "; Secure" if self.secure_cookies else ""
         cookie = (
-            f"_queue_ticket={ticket.id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600"
+            f"_queue_ticket={ticket.id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600{secure_flag}"
         )
 
         await send({
@@ -293,6 +296,7 @@ def _queue_page_html(
     ticket_id: str, position: int, est_wait: float, redirect_url: str
 ) -> str:
     safe_url = escape(redirect_url, quote=True)
+    safe_tid = escape(ticket_id, quote=True)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -317,7 +321,7 @@ width:0%;transition:width .5s ease;animation:pulse 2s infinite}}
 </style>
 </head>
 <body>
-<div class="card">
+<div class="card" id="queue-card" data-ticket="{safe_tid}" data-redirect="{safe_url}">
 <h1>TEREDACTA</h1>
 <p class="label">You are in the queue</p>
 <div class="pos" id="pos">{position}</div>
@@ -326,32 +330,6 @@ width:0%;transition:width .5s ease;animation:pulse 2s infinite}}
 <div class="bar"><div class="bar-inner" id="bar"></div></div>
 <p class="status" id="status">Checking every 3 seconds&hellip;</p>
 </div>
-<script>
-(function(){{
-  const tid="{escape(ticket_id, quote=True)}";
-  const url="{safe_url}";
-  let iv=setInterval(async()=>{{
-    try{{
-      const r=await fetch("/_queue/status?ticket="+tid);
-      const d=await r.json();
-      if(d.ready){{
-        clearInterval(iv);
-        document.getElementById("status").textContent="Your turn! Redirecting\\u2026";
-        document.getElementById("bar").style.width="100%";
-        window.location.href=url;
-        return;
-      }}
-      if(d.requeue){{
-        clearInterval(iv);
-        document.getElementById("status").textContent="Re-entering queue\\u2026";
-        window.location.href=url;
-        return;
-      }}
-      document.getElementById("pos").textContent=d.position;
-      document.getElementById("wait").textContent="Estimated wait: "+Math.round(d.wait_estimate_seconds)+"s";
-    }}catch(e){{}}
-  }},3000);
-}})();
-</script>
+<script src="/static/js/queue.js"></script>
 </body>
 </html>"""

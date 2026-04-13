@@ -139,7 +139,7 @@ class TestOriginalPDFsTab:
         resp = client.get("/recoveries/1/tab/original-pdfs")
         assert resp.status_code == 200
         # New behavior: non-cached docs without text_source get text panes instead of error messages
-        assert "log-viewer" in resp.text or "member-text" in resp.text
+        assert "log-viewer" in resp.text
         # Should NOT have iframe src for PDFs when not cached
         assert '<iframe src="/pdf/embed' not in resp.text
 
@@ -171,7 +171,7 @@ class TestOriginalPDFsTab:
         resp = client.get("/pdf/embed?type=cache&path=TestBatch/doc1.pdf")
         assert resp.status_code == 200
         assert "viewerContainer" in resp.text
-        assert "pdf.min.mjs" in resp.text
+        assert "pdf-embed.js" in resp.text
         assert "/pdf/cache/TestBatch/doc1.pdf" in resp.text
 
     def test_embed_rejects_invalid_type(self, client):
@@ -315,12 +315,11 @@ class TestOriginalPDFsTabPdfUrl:
 class TestEmbedViewer:
     """Tests for the PDF embed viewer."""
 
-    def test_embed_uses_tojson_for_url(self, client, tmp_dir, mock_db):
-        """The pdf_url should be safely escaped for JavaScript."""
+    def test_embed_has_pdf_url_data_attribute(self, client, tmp_dir, mock_db):
+        """The pdf_url should be in a data attribute on the container."""
         _seed_recovery(tmp_dir, mock_db)
         resp = client.get("/pdf/embed?type=cache&path=TestBatch/doc1.pdf")
-        # tojson wraps in quotes, so we should see the JSON string
-        assert '"/pdf/cache/TestBatch/doc1.pdf"' in resp.text
+        assert 'data-pdf-url="/pdf/cache/TestBatch/doc1.pdf"' in resp.text
 
     def test_embed_has_loading_indicator(self, client, tmp_dir, mock_db):
         _seed_recovery(tmp_dir, mock_db)
@@ -332,10 +331,10 @@ class TestEmbedViewer:
         resp = client.get("/pdf/embed?type=cache&path=TestBatch/doc1.pdf")
         assert "Failed to load PDF" in resp.text
 
-    def test_embed_has_resize_handler(self, client, tmp_dir, mock_db):
+    def test_embed_loads_external_script(self, client, tmp_dir, mock_db):
         _seed_recovery(tmp_dir, mock_db)
         resp = client.get("/pdf/embed?type=cache&path=TestBatch/doc1.pdf")
-        assert "resize" in resp.text
+        assert "pdf-embed.js" in resp.text
 
 
 class TestTextPaneRendering:
@@ -347,7 +346,7 @@ class TestTextPaneRendering:
         resp = client.get("/recoveries/1/tab/original-pdfs")
         assert resp.status_code == 200
         assert "No PDF available" not in resp.text
-        assert "member-text" in resp.text
+        assert "log-viewer" in resp.text
 
     def test_primary_pane_has_data_doc_id(self, client, tmp_dir, mock_db):
         _seed_recovery(tmp_dir, mock_db)
@@ -454,10 +453,10 @@ class TestTextComparisonIntegration:
     def test_tab_and_endpoint_work_together(self, client, tmp_dir, mock_db):
         """Tab renders text mode, endpoint returns valid HTML for both members."""
         _seed_recovery_with_email(tmp_dir, mock_db)
-        # Tab should reference member-text endpoint
+        # Tab should include text pane placeholder and external script
         tab_resp = client.get("/recoveries/1/tab/original-pdfs")
         assert tab_resp.status_code == 200
-        assert "member-text" in tab_resp.text
+        assert "log-viewer" in tab_resp.text
         # Endpoint should return valid HTML fragment
         text_resp = client.get("/recoveries/1/member-text?doc_id=test-doc-0")
         assert text_resp.status_code == 200

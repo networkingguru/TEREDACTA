@@ -1,6 +1,8 @@
 import asyncio
+import collections
 import re
 import shutil
+import time
 from html import escape
 from functools import partial
 from fastapi import APIRouter, Request, Query
@@ -32,6 +34,50 @@ def _ctx(request: Request, **extra):
         "csrf_token": getattr(request.state, "csrf_token", ""),
         **extra,
     }
+
+# Login rate limiting: max 5 failed attempts per IP per 60 seconds
+_LOGIN_WINDOW = 60
+_LOGIN_MAX_ATTEMPTS = 5
+_LOGIN_MAX_TRACKED_IPS = 10000
+_login_attempts: dict[str, collections.deque] = {}
+
+
+def _get_client_ip(request) -> str:
+    """Extract real client IP, trusting X-Forwarded-For from the reverse proxy."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _check_login_rate(ip: str) -> bool:
+    """Return True if the IP is allowed to attempt login, False if rate-limited."""
+    now = time.monotonic()
+    if ip not in _login_attempts:
+        _login_attempts[ip] = collections.deque()
+    attempts = _login_attempts[ip]
+    # Expire old entries
+    while attempts and now - attempts[0] > _LOGIN_WINDOW:
+        attempts.popleft()
+    # Clean up empty entries to prevent unbounded growth
+    if not attempts:
+        del _login_attempts[ip]
+        return True
+    return len(attempts) < _LOGIN_MAX_ATTEMPTS
+
+
+def _record_login_attempt(ip: str):
+    """Record a failed login attempt for rate limiting."""
+    now = time.monotonic()
+    if ip not in _login_attempts:
+        # Cap tracked IPs to prevent memory exhaustion
+        if len(_login_attempts) >= _LOGIN_MAX_TRACKED_IPS:
+            # Drop oldest entry
+            oldest_ip = next(iter(_login_attempts))
+            del _login_attempts[oldest_ip]
+        _login_attempts[ip] = collections.deque()
+    _login_attempts[ip].append(now)
+
 
 # Max length for config values to prevent abuse
 _MAX_CONFIG_VALUE_LEN = 256
@@ -70,6 +116,14 @@ async def stats_fragment(request: Request):
 
 @router.post("/login")
 async def login(request: Request):
+    client_ip = _get_client_ip(request)
+    if not _check_login_rate(client_ip):
+        templates = request.app.state.templates
+        return templates.TemplateResponse(
+            request, "admin/login.html",
+            _ctx(request, error="Too many login attempts. Try again later."),
+            status_code=429,
+        )
     form = await request.form()
     password = form.get("password", "")
     config = request.app.state.config
@@ -80,6 +134,7 @@ async def login(request: Request):
         response = RedirectResponse("/admin", status_code=303)
         auth.create_session(response)
         return response
+    _record_login_attempt(client_ip)
     templates = request.app.state.templates
     return templates.TemplateResponse(request, "admin/login.html", _ctx(request, error="Invalid password"), status_code=401)
 

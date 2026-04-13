@@ -147,6 +147,7 @@ def create_app(config: TeredactaConfig) -> FastAPI:
         fastapi_app,
         max_concurrent=config.max_concurrent_requests,
         max_queue=config.max_queue_size,
+        secure_cookies=config.is_secure,
     )
 
     return app
