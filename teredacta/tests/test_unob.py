@@ -182,6 +182,79 @@ class TestUnobDBReads:
         assert len(detail["recovered_segments"]) == 2
         assert detail["recovered_segments"][0]["text"] == "Ghislaine Maxwell"
 
+
+class TestFeaturedRecovery:
+    """Pin-resolution for the highlights page. Stays stable across group-id regens."""
+
+    def _seed(self, db_path, rows):
+        """rows: list of (group_id, merged_text, recovered_count, segments)."""
+        conn = sqlite3.connect(str(db_path))
+        for gid, text, rc, segs in rows:
+            conn.execute("INSERT OR IGNORE INTO match_groups (group_id, merged) VALUES (?, 1)", (gid,))
+            conn.execute(
+                "INSERT OR REPLACE INTO merge_results "
+                "(group_id, merged_text, recovered_count, total_redacted, source_doc_ids, recovered_segments) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (gid, text, rc, rc, json.dumps([]), json.dumps(segs)),
+            )
+        conn.commit()
+        conn.close()
+
+    def test_anchor_match_picks_highest_recovered(self, test_config, mock_db):
+        self._seed(mock_db, [
+            (500, "Tova Noel was staff psychologist on duty.", 5, [{"text": "five"}]),
+            (501, "Tova Noel was staff psychologist on duty — second copy.", 10, [{"text": "ten"}]),
+            (502, "Some unrelated email content with no anchors.", 20, [{"text": "unrelated"}]),
+        ])
+        test_config.db_path = str(mock_db)
+        unob = UnobInterface(test_config)
+        featured = unob.get_featured_recovery(["Tova Noel", "psychologist"])
+        assert featured is not None
+        assert featured["group_id"] == 501
+        assert featured["recovered_count"] == 10
+
+    def test_anchor_miss_falls_back_to_top_recovered(self, test_config, mock_db):
+        self._seed(mock_db, [
+            (600, "content without the anchors", 3, [{"text": "three"}]),
+            (601, "another group, no match", 7, [{"text": "seven"}]),
+        ])
+        test_config.db_path = str(mock_db)
+        unob = UnobInterface(test_config)
+        featured = unob.get_featured_recovery(["NotPresent", "AlsoMissing"])
+        assert featured is not None
+        assert featured["group_id"] == 601  # fallback = highest recovered_count
+
+    def test_no_anchors_uses_fallback(self, test_config, mock_db):
+        self._seed(mock_db, [
+            (700, "anything", 2, [{"text": "two"}]),
+            (701, "also anything", 9, [{"text": "nine"}]),
+        ])
+        test_config.db_path = str(mock_db)
+        unob = UnobInterface(test_config)
+        assert unob.get_featured_recovery(None)["group_id"] == 701
+        assert unob.get_featured_recovery([])["group_id"] == 701
+
+    def test_returns_none_when_no_recoveries_exist(self, test_config, mock_db):
+        # No rows in merge_results at all
+        test_config.db_path = str(mock_db)
+        unob = UnobInterface(test_config)
+        assert unob.get_featured_recovery(["anything"]) is None
+        assert unob.get_featured_recovery(None) is None
+
+    def test_zero_recovered_count_groups_are_ignored(self, test_config, mock_db):
+        # Even if merged_text matches the anchors, groups with recovered_count=0
+        # should not be selected — they have nothing to display.
+        self._seed(mock_db, [
+            (800, "Tova Noel and psychologist in the text, but no recoveries", 0, []),
+            (801, "fallback candidate unrelated to anchors", 4, [{"text": "four"}]),
+        ])
+        test_config.db_path = str(mock_db)
+        unob = UnobInterface(test_config)
+        featured = unob.get_featured_recovery(["Tova Noel", "psychologist"])
+        assert featured is not None
+        assert featured["group_id"] == 801  # anchor group filtered by rc>0, fell back
+
+
     def test_read_log_lines(self, test_config, tmp_dir):
         log_path = tmp_dir / "unobfuscator.log"
         log_path.write_text("INFO line1\nWARNING line2\nERROR line3\n")

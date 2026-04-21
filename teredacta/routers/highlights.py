@@ -4,6 +4,12 @@ from fastapi.responses import HTMLResponse
 
 router = APIRouter()
 
+# Content anchors for the featured recovery card. The group_id that holds this
+# content changes when unob's matcher/merger algorithm is rerun; resolving by
+# substring survives those regens. The MCC duty-officer / staff psychologist
+# memo thread is the narrative anchor for the highlights page.
+_FEATURED_ANCHORS = ("Tova Noel", "psychologist")
+
 
 def _get_headline(segments_json: str) -> str:
     """Extract the first substantive segment text (~100 chars for headline."""
@@ -44,14 +50,14 @@ def highlights_page(request: Request):
     # Featured recovery (pinned at top of highlights)
     featured = None
     try:
-        featured_detail = unob.get_recovery_detail(8022)
+        featured_detail = unob.get_featured_recovery(list(_FEATURED_ANCHORS))
         if featured_detail:
             featured = {
-                "group_id": 8022,
+                "group_id": featured_detail["group_id"],
                 "recovered_count": featured_detail["recovered_count"],
                 "headline": _get_headline(featured_detail.get("recovered_segments", [])),
             }
-    except Exception:
+    except FileNotFoundError:
         pass
 
     # Top entities from entity index (single query with samples)

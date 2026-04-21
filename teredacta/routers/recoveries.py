@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.responses import Response
 
 from teredacta.unob import calc_total_pages
@@ -57,6 +57,16 @@ def recovery_detail(request: Request, group_id: int):
     unob = request.app.state.unob
     detail = unob.get_recovery_detail(group_id)
     if detail is None:
+        # Stale deeplink (README, social cards, external posts) — group_ids
+        # shift when the matcher/merger algorithm regenerates. Redirect to
+        # the current featured recovery so external links keep landing on
+        # meaningful content instead of a 404.
+        featured = unob.get_featured_recovery(None)
+        if featured and featured["group_id"] != group_id:
+            return RedirectResponse(
+                url=f"/recoveries/{featured['group_id']}",
+                status_code=302,
+            )
         return Response(status_code=404)
     return templates.TemplateResponse(request, "recoveries/detail.html", {
         "recovery": detail, "group_id": group_id,

@@ -749,6 +749,46 @@ class UnobInterface:
         finally:
             self._release_db(conn)
 
+    def get_featured_recovery(self, anchor_phrases: Optional[list[str]] = None) -> Optional[dict]:
+        """Resolve the featured recovery group by content anchors.
+
+        Picks the group with the highest recovered_count whose merged_text contains
+        every phrase in anchor_phrases. Falls back to the top-recovered group overall
+        if no anchor match exists, so the featured card always renders something when
+        any recovery data is present. Returns None only when no group has recovery
+        data at all.
+
+        Group IDs are auto-increment and shift whenever the matcher/merger algorithm
+        changes, so pinning by ID is brittle. Anchor phrases survive re-clustering as
+        long as the content does.
+        """
+        conn = self._get_db()
+        try:
+            featured_group_id = None
+            if anchor_phrases:
+                where = " AND ".join(["merged_text LIKE ?"] * len(anchor_phrases))
+                params = [f"%{p}%" for p in anchor_phrases]
+                row = conn.execute(
+                    f"SELECT group_id FROM merge_results "
+                    f"WHERE recovered_count > 0 AND {where} "
+                    f"ORDER BY recovered_count DESC LIMIT 1",
+                    params,
+                ).fetchone()
+                if row is not None:
+                    featured_group_id = row["group_id"]
+            if featured_group_id is None:
+                row = conn.execute(
+                    "SELECT group_id FROM merge_results "
+                    "WHERE recovered_count > 0 "
+                    "ORDER BY recovered_count DESC LIMIT 1"
+                ).fetchone()
+                if row is None:
+                    return None
+                featured_group_id = row["group_id"]
+        finally:
+            self._release_db(conn)
+        return self.get_recovery_detail(featured_group_id)
+
     def get_source_context(self, group_id: int, segment_index: int) -> Optional[dict]:
         """Get source document context for a recovered segment.
 

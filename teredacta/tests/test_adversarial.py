@@ -567,6 +567,77 @@ class TestHighlightsAdversarial:
         assert resp.status_code == 200
         assert "Notable Entities" in resp.text
 
+    def test_stale_recovery_deeplink_redirects_to_featured(self, client, mock_db):
+        """External deeplinks to old group_ids (e.g. README pointing at 8022)
+        should redirect to the current featured recovery instead of 404ing."""
+        conn = sqlite3.connect(str(mock_db))
+        conn.execute("INSERT OR IGNORE INTO match_groups (group_id, merged) VALUES (555, 1)")
+        segments = json.dumps([{"text": "recovered content"}])
+        conn.execute(
+            "INSERT OR REPLACE INTO merge_results "
+            "(group_id, merged_text, recovered_count, total_redacted, "
+            "source_doc_ids, recovered_segments, created_at) "
+            "VALUES (555, ?, 4, 4, ?, ?, '2020-01-01 00:00:00')",
+            ("placeholder text", json.dumps([]), segments),
+        )
+        conn.commit()
+        conn.close()
+
+        # Stale id 8022 no longer exists; should redirect to 555 (the top rec)
+        resp = client.get("/recoveries/8022", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["location"] == "/recoveries/555"
+
+    def test_stale_recovery_deeplink_404s_when_no_recoveries_exist(self, client, mock_db):
+        """Redirect needs a target. With no recoveries in the DB at all,
+        still 404 — no infinite loops, no phantom redirects."""
+        resp = client.get("/recoveries/8022", follow_redirects=False)
+        assert resp.status_code == 404
+
+    def test_valid_recovery_detail_does_not_redirect(self, client, mock_db):
+        """Live recoveries render normally — redirect logic must not fire
+        when the requested group actually exists."""
+        conn = sqlite3.connect(str(mock_db))
+        conn.execute("INSERT OR IGNORE INTO match_groups (group_id, merged) VALUES (777, 1)")
+        conn.execute(
+            "INSERT OR REPLACE INTO merge_results "
+            "(group_id, merged_text, recovered_count, total_redacted, "
+            "source_doc_ids, recovered_segments, created_at) "
+            "VALUES (777, ?, 3, 3, ?, ?, '2020-01-01 00:00:00')",
+            ("real group content", json.dumps([]), json.dumps([{"text": "seg"}])),
+        )
+        conn.commit()
+        conn.close()
+
+        resp = client.get("/recoveries/777", follow_redirects=False)
+        assert resp.status_code == 200
+
+    def test_highlights_featured_survives_group_id_regen(self, client, mock_db):
+        """Featured pin resolves by content anchors, not a hardcoded group_id.
+
+        Regression for TEREDACTA #20: the original pin was `group_id=8022`.
+        After an algorithm change regenerated groups, that ID pointed at an
+        empty match. This test gives group 999 — an arbitrary new ID — the
+        anchor content and confirms the page surfaces that ID.
+        """
+        conn = sqlite3.connect(str(mock_db))
+        conn.execute("INSERT OR IGNORE INTO match_groups (group_id, merged) VALUES (999, 1)")
+        segments = json.dumps([{"text": "Tova Noel duty officer shift"}])
+        conn.execute(
+            "INSERT OR REPLACE INTO merge_results "
+            "(group_id, merged_text, recovered_count, total_redacted, "
+            "source_doc_ids, recovered_segments, created_at) "
+            "VALUES (999, ?, 5, 5, ?, ?, '2020-01-01 00:00:00')",
+            ("Tova Noel was on shift. The staff psychologist wrote the memo.",
+             json.dumps([]), segments),
+        )
+        conn.commit()
+        conn.close()
+
+        resp = client.get("/highlights")
+        assert resp.status_code == 200
+        assert "/recoveries/999" in resp.text
+
 
 # ============================================================================
 # Document Search — Adversarial
